@@ -1,0 +1,195 @@
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { In, Repository } from "typeorm";
+import { differenceInCalendarDays } from "date-fns";
+import { AuthenticatedUser } from "../../common/types/api.types";
+import { LeaveRequestStatus, UserRole } from "../../common/types/enums";
+import { ok } from "../../common/utils/response.util";
+import { isAdminRole } from "../../common/utils/role.util";
+import { Employee, LeaveRequest, LeaveType } from "../../database/entities";
+import { ApplyLeaveDto, ReviewLeaveDto } from "./dto/leave.dto";
+
+@Injectable()
+export class LeavesService {
+  constructor(
+    @InjectRepository(LeaveRequest) private readonly leaveRequestRepository: Repository<LeaveRequest>,
+    @InjectRepository(LeaveType) private readonly leaveTypeRepository: Repository<LeaveType>,
+    @InjectRepository(Employee) private readonly employeeRepository: Repository<Employee>,
+  ) {}
+
+  private async getCurrentEmployee(user: AuthenticatedUser): Promise<Employee> {
+    const employee = await this.employeeRepository.findOne({ where: { userId: user.sub } });
+    if (!employee) {
+      throw new NotFoundException("Employee profile not found");
+    }
+    return employee;
+  }
+
+  private async ensureTeamAccess(user: AuthenticatedUser, targetEmployeeId: string): Promise<void> {
+    if (isAdminRole(user.role)) {
+      return;
+    }
+
+    const currentEmployee = await this.getCurrentEmployee(user);
+    if (user.role === UserRole.EMPLOYEE && currentEmployee.id !== targetEmployeeId) {
+      throw new ForbiddenException("Employees can access only their own leave data");
+    }
+
+    if (user.role === UserRole.MANAGER && currentEmployee.id !== targetEmployeeId) {
+      const isTeamMember = await this.employeeRepository.exists({
+        where: { id: targetEmployeeId, reportingManagerId: currentEmployee.id },
+      });
+      if (!isTeamMember) {
+        throw new ForbiddenException("Managers can access only team leave data");
+      }
+    }
+  }
+
+  private async resolveScopedEmployeeIds(user: AuthenticatedUser): Promise<string[] | null> {
+    if (isAdminRole(user.role)) {
+      return null;
+    }
+
+    const currentEmployee = await this.getCurrentEmployee(user);
+    if (user.role === UserRole.EMPLOYEE) {
+      return [currentEmployee.id];
+    }
+
+    const teamMembers = await this.employeeRepository.find({
+      where: { reportingManagerId: currentEmployee.id },
+      select: { id: true },
+    });
+    return [currentEmployee.id, ...teamMembers.map((member) => member.id)];
+  }
+
+  async list(user: AuthenticatedUser) {
+    const scopedIds = await this.resolveScopedEmployeeIds(user);
+    const records = await this.leaveRequestRepository.find({
+      where: scopedIds ? { employeeId: In(scopedIds) } : {},
+      relations: { employee: true, leaveType: true, reviewer: true },
+      order: { startDate: "DESC" },
+    });
+
+    return ok(records, "Leave requests fetched", { total: records.length });
+  }
+
+  async apply(user: AuthenticatedUser, dto: ApplyLeaveDto) {
+    const employeeId = dto.employeeId ?? (await this.getCurrentEmployee(user)).id;
+    await this.ensureTeamAccess(user, employeeId);
+
+    const leaveType = await this.leaveTypeRepository.findOne({ where: { id: dto.leaveTypeId } });
+    if (!leaveType) {
+      throw new NotFoundException("Leave type not found");
+    }
+
+    const totalDays = differenceInCalendarDays(new Date(dto.endDate), new Date(dto.startDate)) + 1;
+    if (totalDays <= 0) {
+      throw new ForbiddenException("Invalid leave dates");
+    }
+
+    const request = this.leaveRequestRepository.create({
+      employeeId,
+      leaveTypeId: dto.leaveTypeId,
+      startDate: dto.startDate.slice(0, 10),
+      endDate: dto.endDate.slice(0, 10),
+      totalDays,
+      reason: dto.reason,
+      status: LeaveRequestStatus.PENDING,
+      reviewedBy: null,
+      reviewedAt: null,
+      remarks: null,
+    });
+
+    await this.leaveRequestRepository.save(request);
+    return ok(request, "Leave request submitted");
+  }
+
+  async approve(id: string, user: AuthenticatedUser, dto: ReviewLeaveDto) {
+    const leave = await this.leaveRequestRepository.findOne({ where: { id } });
+    if (!leave) {
+      throw new NotFoundException("Leave request not found");
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException("Employees cannot approve leaves");
+    }
+
+    const reviewer = await this.getCurrentEmployee(user);
+
+    if (user.role === UserRole.MANAGER) {
+      const isTeamMember = await this.employeeRepository.exists({
+        where: { id: leave.employeeId, reportingManagerId: reviewer.id },
+      });
+      if (!isTeamMember) {
+        throw new ForbiddenException("Managers can approve only team leaves");
+      }
+    }
+
+    leave.status = LeaveRequestStatus.APPROVED;
+    leave.reviewedBy = reviewer.id;
+    leave.reviewedAt = new Date();
+    leave.remarks = dto.remarks ?? null;
+    await this.leaveRequestRepository.save(leave);
+
+    return ok(leave, "Leave approved");
+  }
+
+  async reject(id: string, user: AuthenticatedUser, dto: ReviewLeaveDto) {
+    const leave = await this.leaveRequestRepository.findOne({ where: { id } });
+    if (!leave) {
+      throw new NotFoundException("Leave request not found");
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException("Employees cannot reject leaves");
+    }
+
+    const reviewer = await this.getCurrentEmployee(user);
+    if (user.role === UserRole.MANAGER) {
+      const isTeamMember = await this.employeeRepository.exists({
+        where: { id: leave.employeeId, reportingManagerId: reviewer.id },
+      });
+      if (!isTeamMember) {
+        throw new ForbiddenException("Managers can reject only team leaves");
+      }
+    }
+
+    leave.status = LeaveRequestStatus.REJECTED;
+    leave.reviewedBy = reviewer.id;
+    leave.reviewedAt = new Date();
+    leave.remarks = dto.remarks ?? null;
+    await this.leaveRequestRepository.save(leave);
+
+    return ok(leave, "Leave rejected");
+  }
+
+  async balance(employeeId: string, user: AuthenticatedUser) {
+    await this.ensureTeamAccess(user, employeeId);
+
+    const leaveTypes = await this.leaveTypeRepository.find();
+    const approved = await this.leaveRequestRepository.find({
+      where: { employeeId, status: LeaveRequestStatus.APPROVED },
+      relations: { leaveType: true },
+    });
+
+    const data = leaveTypes.map((type) => {
+      const used = approved
+        .filter((record) => record.leaveTypeId === type.id)
+        .reduce((sum, item) => sum + item.totalDays, 0);
+      return {
+        leaveTypeId: type.id,
+        leaveType: type.name,
+        totalDays: type.totalDays,
+        usedDays: used,
+        remainingDays: Math.max(0, type.totalDays - used),
+        isPaid: type.isPaid,
+      };
+    });
+
+    return ok(data, "Leave balance fetched");
+  }
+}

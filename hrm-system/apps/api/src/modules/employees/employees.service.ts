@@ -10,6 +10,7 @@ import { AuthenticatedUser } from "../../common/types/api.types";
 import { EmployeeStatus, UserRole } from "../../common/types/enums";
 import { ok } from "../../common/utils/response.util";
 import { isAdminRole } from "../../common/utils/role.util";
+import { deleteCloudinaryAssetByUrl, uploadBufferToCloudinary } from "../../common/utils/cloudinary.util";
 import { Department, Designation, Employee, User } from "../../database/entities";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { UpdateEmployeeStatusDto } from "./dto/update-employee-status.dto";
@@ -211,7 +212,7 @@ export class EmployeesService {
     return ok(employee, "Employee status updated");
   }
 
-  async uploadAvatar(id: string, avatarPath: string, user: AuthenticatedUser) {
+  async uploadAvatar(id: string, file: Express.Multer.File, user: AuthenticatedUser) {
     await this.ensureCanAccessEmployee(user, id);
 
     const employee = await this.employeeRepository.findOne({ where: { id } });
@@ -219,7 +220,23 @@ export class EmployeesService {
       throw new NotFoundException("Employee not found");
     }
 
-    employee.avatar = avatarPath;
+    if (!file) {
+      throw new ForbiddenException("Avatar file is required");
+    }
+
+    if (!file.mimetype?.startsWith("image/")) {
+      throw new ForbiddenException("Only image files are allowed");
+    }
+
+    const uploaded = await uploadBufferToCloudinary(file, {
+      folder: "hrm/avatars",
+      resource_type: "image",
+      use_filename: true,
+      unique_filename: true,
+    });
+
+    await deleteCloudinaryAssetByUrl(employee.avatar);
+    employee.avatar = uploaded.secure_url;
     await this.employeeRepository.save(employee);
 
     return ok(employee, "Avatar uploaded");

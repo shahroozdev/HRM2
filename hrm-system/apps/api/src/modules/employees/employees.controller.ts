@@ -13,9 +13,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
-import { diskStorage } from "multer";
-import { extname, join } from "path";
-import { ConfigService } from "@nestjs/config";
+import { memoryStorage } from "multer";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -34,10 +32,7 @@ import { EmployeesService } from "./employees.service";
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("employees")
 export class EmployeesController {
-  constructor(
-    private readonly employeesService: EmployeesService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly employeesService: EmployeesService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
@@ -78,14 +73,7 @@ export class EmployeesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
   @UseInterceptors(
     FileInterceptor("avatar", {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          cb(null, join(process.cwd(), process.env.UPLOAD_DIR ?? "uploads", "avatars"));
-        },
-        filename: (_req, file, cb) => {
-          cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
     }),
   )
   @ApiConsumes("multipart/form-data")
@@ -95,9 +83,7 @@ export class EmployeesController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const uploadDir = this.configService.get<string>("UPLOAD_DIR", "uploads").replace(/\\/g, "/");
-    const relativePath = `/${uploadDir}/avatars/${file.filename}`.replace("//", "/");
-    return this.employeesService.uploadAvatar(id, relativePath, user);
+    return this.employeesService.uploadAvatar(id, file, user);
   }
 
   @Delete(":id")

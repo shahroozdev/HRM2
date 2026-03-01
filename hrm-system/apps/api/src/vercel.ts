@@ -68,14 +68,20 @@ async function createServer(): Promise<express.Express> {
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
   const configService = app.get(ConfigService);
 
-  const uploadDir = configService.get<string>("UPLOAD_DIR", "uploads");
-  const uploadPath = join(process.cwd(), uploadDir);
+  // Vercel filesystem is read-only under /var/task. Use /tmp for writable uploads.
+  const runtimeUploadDir = process.env.VERCEL ? "/tmp/uploads" : configService.get<string>("UPLOAD_DIR", "uploads");
+  process.env.UPLOAD_DIR = runtimeUploadDir;
+  const uploadPath = runtimeUploadDir.startsWith("/") ? runtimeUploadDir : join(process.cwd(), runtimeUploadDir);
   const avatarDir = join(uploadPath, "avatars");
   const documentDir = join(uploadPath, "documents");
 
   for (const dir of [uploadPath, avatarDir, documentDir]) {
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    try {
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+    } catch {
+      // On serverless cold starts this can fail if path is not writable; continue gracefully.
     }
   }
 

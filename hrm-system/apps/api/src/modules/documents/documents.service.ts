@@ -9,6 +9,7 @@ import { AuthenticatedUser } from "../../common/types/api.types";
 import { DocumentAccessLevel, UserRole } from "../../common/types/enums";
 import { ok } from "../../common/utils/response.util";
 import { isAdminRole } from "../../common/utils/role.util";
+import { deleteCloudinaryAssetByUrl, uploadBufferToCloudinary } from "../../common/utils/cloudinary.util";
 import { Document, Employee } from "../../database/entities";
 import { UploadDocumentDto } from "./dto/upload-document.dto";
 
@@ -48,7 +49,7 @@ export class DocumentsService {
     return ok(rows, "Documents fetched", { total: rows.length });
   }
 
-  async upload(user: AuthenticatedUser, dto: UploadDocumentDto, filePath: string) {
+  async upload(user: AuthenticatedUser, dto: UploadDocumentDto, file: Express.Multer.File) {
     if (!isAdminRole(user.role) && user.role !== UserRole.MANAGER) {
       const self = await this.employeeRepository.findOne({ where: { userId: user.sub } });
       if (!self || self.id !== dto.employeeId) {
@@ -66,11 +67,22 @@ export class DocumentsService {
       }
     }
 
+    if (!file) {
+      throw new ForbiddenException("Document file is required");
+    }
+
+    const uploaded = await uploadBufferToCloudinary(file, {
+      folder: "hrm/documents",
+      resource_type: "auto",
+      use_filename: true,
+      unique_filename: true,
+    });
+
     const record = this.documentRepository.create({
       employeeId: dto.employeeId,
       type: dto.type,
       name: dto.name,
-      filePath,
+      filePath: uploaded.secure_url,
       uploadedById: user.sub,
       accessLevel: dto.accessLevel,
     });
@@ -105,6 +117,7 @@ export class DocumentsService {
       }
     }
 
+    await deleteCloudinaryAssetByUrl(doc.filePath);
     await this.documentRepository.delete(doc.id);
     return ok({ deleted: true }, "Document deleted");
   }

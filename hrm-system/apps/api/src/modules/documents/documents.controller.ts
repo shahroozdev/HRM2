@@ -10,7 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiConsumes, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname, join } from "path";
@@ -27,6 +27,8 @@ import { DocumentsService } from "./documents.service";
 
 @ApiTags("Documents")
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: "Missing or invalid bearer token" })
+@ApiForbiddenResponse({ description: "Insufficient role permissions" })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("documents")
 export class DocumentsController {
@@ -57,6 +59,7 @@ export class DocumentsController {
     }),
   )
   @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Upload document for an employee" })
   upload(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UploadDocumentDto,
@@ -69,12 +72,14 @@ export class DocumentsController {
 
   @Delete(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Delete document by id" })
   remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.documentsService.remove(id, user);
   }
 
   @Get(":id/download")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Download document file by id" })
   async download(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
     const doc = await this.documentsService.findOne(id, user);
     res.download(join(process.cwd(), doc.filePath.replace(/^\//, "")), doc.name);

@@ -12,7 +12,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiConsumes, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { diskStorage } from "multer";
 import { extname, join } from "path";
 import { ConfigService } from "@nestjs/config";
@@ -29,6 +29,8 @@ import { EmployeesService } from "./employees.service";
 
 @ApiTags("Employees")
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: "Missing or invalid bearer token" })
+@ApiForbiddenResponse({ description: "Insufficient role permissions" })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("employees")
 export class EmployeesController {
@@ -53,18 +55,21 @@ export class EmployeesController {
 
   @Get(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Get single employee by id" })
   findOne(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.findOne(id, user);
   }
 
   @Put(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Update employee by id" })
   update(@Param("id") id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.update(id, dto, user);
   }
 
   @Patch(":id/status")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update employee status by id" })
   updateStatus(@Param("id") id: string, @Body() dto: UpdateEmployeeStatusDto, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.updateStatus(id, dto, user);
   }
@@ -84,6 +89,7 @@ export class EmployeesController {
     }),
   )
   @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Upload employee avatar" })
   uploadAvatar(
     @Param("id") id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -96,6 +102,7 @@ export class EmployeesController {
 
   @Delete(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete employee by id" })
   remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.remove(id, user);
   }

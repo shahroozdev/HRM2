@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -10,6 +10,8 @@ import { ReportsService } from "./reports.service";
 
 @ApiTags("Reports")
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: "Missing or invalid bearer token" })
+@ApiForbiddenResponse({ description: "Insufficient role permissions" })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("reports")
 export class ReportsController {
@@ -24,18 +26,21 @@ export class ReportsController {
 
   @Get("leave-utilization")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER)
+  @ApiOperation({ summary: "Leave utilization report" })
   leaveUtilization(@CurrentUser() user: AuthenticatedUser) {
     return this.reportsService.leaveUtilization(user);
   }
 
   @Get("salary-expense")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Salary expense report" })
   salaryExpense(@CurrentUser() user: AuthenticatedUser, @Query() query: Record<string, string | undefined>) {
     return this.reportsService.salaryExpense(user, query);
   }
 
   @Get("department-analytics")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Department analytics report" })
   departmentAnalytics(@CurrentUser() user: AuthenticatedUser) {
     return this.reportsService.departmentAnalytics(user);
   }

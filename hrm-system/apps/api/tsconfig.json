@@ -6,12 +6,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "outDir": "dist",
-    "baseUrl": "./",
-    "paths": {
-      "@hrm/shared": [
-        "../../packages/shared/src"
-      ]
-    }
+    "baseUrl": "./"
   },
   "include": [
     "src/**/*.ts"

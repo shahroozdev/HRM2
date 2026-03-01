@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Post, Query, Body, UseGuards, Res } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { Response } from "express";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -12,6 +12,8 @@ import { PayrollService } from "./payroll.service";
 
 @ApiTags("Payroll")
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: "Missing or invalid bearer token" })
+@ApiForbiddenResponse({ description: "Insufficient role permissions" })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("payroll")
 export class PayrollController {

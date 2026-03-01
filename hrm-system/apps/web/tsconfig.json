@@ -10,9 +10,7 @@
     "incremental": true,
     "noEmit": true,
     "paths": {
-      "@/*": ["./*"],
-      "@hrm/shared": ["../../packages/shared/src"],
-      "@hrm/ui": ["../../packages/ui/src"]
+      "@/*": ["./*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

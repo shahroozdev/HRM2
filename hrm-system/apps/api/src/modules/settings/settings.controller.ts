@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Put, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -11,6 +11,8 @@ import { SettingsService } from "./settings.service";
 
 @ApiTags("Settings")
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: "Missing or invalid bearer token" })
+@ApiForbiddenResponse({ description: "Insufficient role permissions" })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("settings")
 export class SettingsController {
@@ -25,24 +27,28 @@ export class SettingsController {
 
   @Put("company")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update company settings" })
   updateCompany(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateCompanyDto) {
     return this.settingsService.updateCompany(user, dto);
   }
 
   @Get("departments")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Get departments list" })
   getDepartments(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.getDepartments(user);
   }
 
   @Post("departments")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Create department" })
   createDepartment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateDepartmentDto) {
     return this.settingsService.createDepartment(user, dto);
   }
 
   @Get("designations")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Get designations list" })
   getDesignations(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.getDesignations(user);
   }

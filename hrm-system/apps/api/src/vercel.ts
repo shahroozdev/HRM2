@@ -2,8 +2,9 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { ExpressAdapter } from "@nestjs/platform-express";
 import * as bcrypt from "bcrypt";
-import * as express from "express";
+import express, { Request, Response } from "express";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { DataSource } from "typeorm";
@@ -13,6 +14,8 @@ import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 import { AppModule } from "./app.module";
 import { User } from "./database/entities";
+
+let cachedServer: express.Express | null = null;
 
 function landingHtml(): string {
   return `<!doctype html>
@@ -56,8 +59,13 @@ async function seedSuperAdmin(dataSource: DataSource): Promise<void> {
   }
 }
 
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+async function createServer(): Promise<express.Express> {
+  if (cachedServer) {
+    return cachedServer;
+  }
+
+  const server = express();
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
   const configService = app.get(ConfigService);
 
   const uploadDir = configService.get<string>("UPLOAD_DIR", "uploads");
@@ -87,15 +95,18 @@ async function bootstrap(): Promise<void> {
     .setVersion("1.0.0")
     .addBearerAuth()
     .build();
-
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, swaggerDocument);
 
   const dataSource = app.get(DataSource);
   await seedSuperAdmin(dataSource);
 
-  const port = Number(configService.get<string>("PORT", "4000"));
-  await app.listen(port);
+  await app.init();
+  cachedServer = server;
+  return server;
 }
 
-void bootstrap();
+export default async function handler(req: Request, res: Response): Promise<void> {
+  const server = await createServer();
+  server(req, res);
+}

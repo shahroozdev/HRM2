@@ -14,7 +14,6 @@
     "clean": "if exist dist rmdir /s /q dist"
   },
   "dependencies": {
-    "@hrm/shared": "*",
     "@nestjs/common": "^11.0.3",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.3",

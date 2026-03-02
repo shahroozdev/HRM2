@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsOptional, IsString } from "class-validator";
+import { IsObject, IsOptional, IsString } from "class-validator";
 
 export class UpdateCompanyDto {
   @ApiPropertyOptional()
@@ -37,4 +37,10 @@ export class CreateDepartmentDto {
   @IsOptional()
   @IsString()
   headId?: string;
+}
+
+export class UpdateAccessPolicyDto {
+  @ApiProperty({ type: Object })
+  @IsObject()
+  policy!: Record<string, unknown>;
 }

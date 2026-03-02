@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
-import { CreateDepartmentDto, UpdateCompanyDto } from "./dto/settings.dto";
+import { CreateDepartmentDto, UpdateAccessPolicyDto, UpdateCompanyDto } from "./dto/settings.dto";
 import { SettingsService } from "./settings.service";
 
 @ApiTags("Settings")
@@ -51,5 +51,19 @@ export class SettingsController {
   @ApiOperation({ summary: "Get designations list" })
   getDesignations(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.getDesignations(user);
+  }
+
+  @Get("access-policy")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Get ABAC access policy used by frontend navigation/actions" })
+  getAccessPolicy(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getAccessPolicy(user);
+  }
+
+  @Put("access-policy")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Update ABAC access policy (Super Admin only)" })
+  updateAccessPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateAccessPolicyDto) {
+    return this.settingsService.updateAccessPolicy(user, dto);
   }
 }

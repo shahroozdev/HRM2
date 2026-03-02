@@ -112,7 +112,7 @@ export class AttendanceService {
 
   async checkOut(user: AuthenticatedUser, dto: CheckOutDto) {
     const employeeId = await this.resolveTargetEmployeeId(user, dto.employeeId);
-    const date = new Date().toISOString().slice(0, 10);
+    const date = dto.date ?? new Date().toISOString().slice(0, 10);
 
     const entry = await this.attendanceRepository.findOne({ where: { employeeId, date } });
     if (!entry) {

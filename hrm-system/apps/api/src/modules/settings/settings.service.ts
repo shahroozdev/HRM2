@@ -5,7 +5,7 @@ import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
 import { ok } from "../../common/utils/response.util";
 import { CompanySetting, Department, Designation, Employee } from "../../database/entities";
-import { CreateDepartmentDto, UpdateCompanyDto } from "./dto/settings.dto";
+import { CreateDepartmentDto, UpdateAccessPolicyDto, UpdateCompanyDto } from "./dto/settings.dto";
 
 @Injectable()
 export class SettingsService {
@@ -20,6 +20,26 @@ export class SettingsService {
     if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.HR_MANAGER) {
       throw new ForbiddenException("Only HR and Super Admin can manage settings");
     }
+  }
+
+  private ensureSuperAdmin(user: AuthenticatedUser): void {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException("Only Super Admin can manage access control");
+    }
+  }
+
+  private defaultAccessPolicy() {
+    return {
+      sidebar: {
+        super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"],
+        hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports"],
+        manager: ["dashboard", "employees", "attendance", "leaves", "documents", "reports"],
+        employee: ["dashboard", "attendance", "leaves", "documents", "payroll"],
+      },
+      actions: {
+        attendanceManualMark: ["super_admin", "hr_manager", "manager"],
+      },
+    };
   }
 
   async getCompany(user: AuthenticatedUser) {
@@ -57,6 +77,36 @@ export class SettingsService {
 
     await this.companyRepository.save(settings);
     return ok(settings.value, "Company settings updated");
+  }
+
+  async getAccessPolicy(_user: AuthenticatedUser) {
+    let settings = await this.companyRepository.findOne({ where: { key: "access_policy" } });
+    if (!settings) {
+      settings = this.companyRepository.create({
+        key: "access_policy",
+        value: this.defaultAccessPolicy(),
+      });
+      await this.companyRepository.save(settings);
+    }
+
+    return ok(settings.value, "Access policy fetched");
+  }
+
+  async updateAccessPolicy(user: AuthenticatedUser, dto: UpdateAccessPolicyDto) {
+    this.ensureSuperAdmin(user);
+
+    let settings = await this.companyRepository.findOne({ where: { key: "access_policy" } });
+    if (!settings) {
+      settings = this.companyRepository.create({ key: "access_policy", value: this.defaultAccessPolicy() });
+    }
+
+    settings.value = {
+      ...this.defaultAccessPolicy(),
+      ...(dto.policy ?? {}),
+    };
+    await this.companyRepository.save(settings);
+
+    return ok(settings.value, "Access policy updated");
   }
 
   async getDepartments(user: AuthenticatedUser) {

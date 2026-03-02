@@ -2,12 +2,18 @@
 
 import { PageHeader } from "@/components/shared/page-header";
 import { api } from "@/lib/api";
+import { AccessPolicy, AppRole, Resource, getDefaultAccessPolicy } from "@/lib/permissions";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { useAccessPolicy } from "@/hooks/use-access-policy";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-const tabs = ["company", "leave-rules", "office-timings", "appearance"] as const;
+const tabs = ["company", "leave-rules", "office-timings", "appearance", "access-control"] as const;
+const roles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
+const resources: Resource[] = ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"];
+const manualRoles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
 
 type LeaveRule = {
   id: string;
@@ -16,7 +22,109 @@ type LeaveRule = {
   paid: boolean;
 };
 
+function AccessControlEditor({
+  initialPolicy,
+  onSave,
+}: {
+  initialPolicy: AccessPolicy;
+  onSave: (policy: AccessPolicy) => Promise<void>;
+}): React.JSX.Element {
+  const [policyDraft, setPolicyDraft] = useState<AccessPolicy>(initialPolicy);
+
+  const toggleSidebarResource = (targetRole: AppRole, resource: Resource) => {
+    setPolicyDraft((prev) => {
+      const current = prev.sidebar[targetRole] ?? [];
+      const exists = current.includes(resource);
+      const next = exists ? current.filter((item) => item !== resource) : [...current, resource];
+      return {
+        ...prev,
+        sidebar: {
+          ...prev.sidebar,
+          [targetRole]: next,
+        },
+      };
+    });
+  };
+
+  const toggleManualRole = (targetRole: AppRole) => {
+    setPolicyDraft((prev) => {
+      const current = prev.actions.attendanceManualMark ?? [];
+      const exists = current.includes(targetRole);
+      const next = exists ? current.filter((item) => item !== targetRole) : [...current, targetRole];
+      return {
+        ...prev,
+        actions: {
+          ...prev.actions,
+          attendanceManualMark: next,
+        },
+      };
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border p-4">
+        <h3 className="mb-3 font-semibold">Sidebar Visibility (Role Based)</h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="border px-2 py-2 text-left">Resource</th>
+                {roles.map((r) => (
+                  <th key={r} className="border px-2 py-2 text-left">{r}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {resources.map((resource) => (
+                <tr key={resource}>
+                  <td className="border px-2 py-2 font-medium">{resource}</td>
+                  {roles.map((r) => {
+                    const checked = policyDraft.sidebar[r]?.includes(resource) ?? false;
+                    return (
+                      <td key={`${resource}-${r}`} className="border px-2 py-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSidebarResource(r, resource)}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-xl border p-4">
+        <h3 className="mb-3 font-semibold">Manual Attendance Permission</h3>
+        <div className="flex flex-wrap gap-4">
+          {manualRoles.map((r) => {
+            const checked = policyDraft.actions.attendanceManualMark?.includes(r) ?? false;
+            return (
+              <label key={r} className="flex items-center gap-2 rounded border px-3 py-2">
+                <input type="checkbox" checked={checked} onChange={() => toggleManualRole(r)} />
+                <span>{r}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      <button className="rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={() => onSave(policyDraft)} type="button">
+        Save Access Control
+      </button>
+    </div>
+  );
+}
+
 export default function SettingsPage(): React.JSX.Element {
+  const session = useAuthSession();
+  const role = session.data?.user?.role;
+  const isSuperAdmin = role === "super_admin";
+  const accessPolicyQuery = useAccessPolicy();
   const [tab, setTab] = useState<(typeof tabs)[number]>("company");
   const { theme, setTheme } = useTheme();
   const company = useQuery({ queryKey: ["company"], queryFn: async () => (await api.get("/settings/company")).data.data });
@@ -47,6 +155,9 @@ export default function SettingsPage(): React.JSX.Element {
       window.localStorage.setItem("hrm-leave-rules", JSON.stringify(rules));
     }
   }, [rules]);
+
+  const visibleTabs = useMemo(() => tabs.filter((t) => t !== "access-control" || isSuperAdmin), [isSuperAdmin]);
+  const activeTab = visibleTabs.includes(tab) ? tab : (visibleTabs[0] ?? "company");
 
   const saveCompany = async () => {
     const payload = {
@@ -110,15 +221,25 @@ export default function SettingsPage(): React.JSX.Element {
     reader.readAsDataURL(file);
   };
 
+  const saveAccessPolicy = async (policy: AccessPolicy) => {
+    if (!isSuperAdmin) {
+      toast.error("Only super admin can update access control");
+      return;
+    }
+    await api.put("/settings/access-policy", { policy });
+    await accessPolicyQuery.refetch();
+    toast.success("Access policy updated");
+  };
+
   return (
     <div>
       <PageHeader title="Settings" description="Configure HRM system defaults" />
       <div className="mb-4 flex flex-wrap gap-2">
-        {tabs.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-2 text-sm ${tab === t ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-bg)]"}`}
+            className={`rounded px-3 py-2 text-sm ${activeTab === t ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-bg)]"}`}
             type="button"
           >
             {t}
@@ -126,7 +247,7 @@ export default function SettingsPage(): React.JSX.Element {
         ))}
       </div>
 
-      {tab === "company" && (
+      {activeTab === "company" && (
         <div className="space-y-4">
           <div className="rounded-xl border p-4">
             <div className="grid gap-3 md:grid-cols-2">
@@ -161,7 +282,7 @@ export default function SettingsPage(): React.JSX.Element {
         </div>
       )}
 
-      {tab === "leave-rules" && (
+      {activeTab === "leave-rules" && (
         <div className="rounded-xl border p-4">
           <h3 className="mb-3 font-semibold">Leave Rule Builder</h3>
           <div className="grid gap-3 md:grid-cols-4">
@@ -189,7 +310,7 @@ export default function SettingsPage(): React.JSX.Element {
         </div>
       )}
 
-      {tab === "office-timings" && (
+      {activeTab === "office-timings" && (
         <div className="rounded-xl border p-4">
           <h3 className="mb-3 font-semibold">Office Timings</h3>
           <div className="grid gap-3 md:grid-cols-3">
@@ -203,7 +324,7 @@ export default function SettingsPage(): React.JSX.Element {
         </div>
       )}
 
-      {tab === "appearance" && (
+      {activeTab === "appearance" && (
         <div className="space-y-4">
           <div className="rounded-xl border p-4">
             <h3 className="mb-3 font-semibold">Theme</h3>
@@ -229,6 +350,16 @@ export default function SettingsPage(): React.JSX.Element {
             </div>
             <input type="file" accept="image/*" onChange={onLogoChange} className="block w-full max-w-xs rounded border p-2 text-sm" />
           </div>
+        </div>
+      )}
+
+      {activeTab === "access-control" && isSuperAdmin && (
+        <div>
+          <AccessControlEditor
+            key={JSON.stringify(accessPolicyQuery.data ?? getDefaultAccessPolicy())}
+            initialPolicy={accessPolicyQuery.data ?? getDefaultAccessPolicy()}
+            onSave={saveAccessPolicy}
+          />
         </div>
       )}
     </div>

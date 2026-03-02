@@ -7,21 +7,26 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { cn } from "@/lib/utils";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { canView, Resource } from "@/lib/permissions";
+import { useAccessPolicy } from "@/hooks/use-access-policy";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/employees", label: "Employees", icon: Users },
-  { href: "/attendance", label: "Attendance", icon: CalendarCheck2 },
-  { href: "/leaves", label: "Leaves", icon: WalletCards },
-  { href: "/payroll", label: "Payroll", icon: DollarSign },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, resource: "dashboard" as Resource },
+  { href: "/employees", label: "Employees", icon: Users, resource: "employees" as Resource },
+  { href: "/attendance", label: "Attendance", icon: CalendarCheck2, resource: "attendance" as Resource },
+  { href: "/leaves", label: "Leaves", icon: WalletCards, resource: "leaves" as Resource },
+  { href: "/payroll", label: "Payroll", icon: DollarSign, resource: "payroll" as Resource },
+  { href: "/documents", label: "Documents", icon: FileText, resource: "documents" as Resource },
+  { href: "/reports", label: "Reports", icon: BarChart3, resource: "reports" as Resource },
+  { href: "/settings", label: "Settings", icon: Settings, resource: "settings" as Resource },
 ];
 
 export function Sidebar(): React.JSX.Element {
   const pathname = usePathname();
   const { sidebarCollapsed } = useUIStore();
+  const { data: session } = useAuthSession();
+  const { data: accessPolicy } = useAccessPolicy();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,7 +56,7 @@ export function Sidebar(): React.JSX.Element {
         </div>
       </div>
       <nav className="flex-1 space-y-2 px-3">
-        {nav.map((item) => {
+        {nav.filter((item) => canView(session?.user?.role, item.resource, accessPolicy)).map((item) => {
           const Icon = item.icon;
           const active = pathname.startsWith(item.href);
           return (

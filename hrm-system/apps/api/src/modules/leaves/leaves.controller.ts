@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
-import { ApplyLeaveDto, ReviewLeaveDto } from "./dto/leave.dto";
+import { ApplyLeaveDto, ReviewLeaveDto, UpdateLeaveDto } from "./dto/leave.dto";
 import { LeavesService } from "./leaves.service";
 
 @ApiTags("Leaves")
@@ -25,11 +25,32 @@ export class LeavesController {
     return this.leavesService.list(user);
   }
 
+  @Get("types")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Get leave type list for dropdowns/forms" })
+  listTypes() {
+    return this.leavesService.listTypes();
+  }
+
   @Post("apply")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
   @ApiOperation({ summary: "Apply for leave" })
   apply(@CurrentUser() user: AuthenticatedUser, @Body() dto: ApplyLeaveDto) {
     return this.leavesService.apply(user, dto);
+  }
+
+  @Put(":id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Update leave request by id" })
+  update(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateLeaveDto) {
+    return this.leavesService.update(id, user, dto);
+  }
+
+  @Delete(":id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Delete leave request by id" })
+  remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.leavesService.remove(id, user);
   }
 
   @Put(":id/approve")

@@ -11,7 +11,7 @@ import { LeaveRequestStatus, UserRole } from "../../common/types/enums";
 import { ok } from "../../common/utils/response.util";
 import { isAdminRole } from "../../common/utils/role.util";
 import { Employee, LeaveRequest, LeaveType } from "../../database/entities";
-import { ApplyLeaveDto, ReviewLeaveDto } from "./dto/leave.dto";
+import { ApplyLeaveDto, ReviewLeaveDto, UpdateLeaveDto } from "./dto/leave.dto";
 
 @Injectable()
 export class LeavesService {
@@ -27,6 +27,23 @@ export class LeavesService {
       throw new NotFoundException("Employee profile not found");
     }
     return employee;
+  }
+
+  private async ensureDefaultLeaveTypes(): Promise<LeaveType[]> {
+    const existing = await this.leaveTypeRepository.find({ order: { name: "ASC" } });
+    if (existing.length) {
+      return existing;
+    }
+
+    const defaults = this.leaveTypeRepository.create([
+      { name: "Full Day", totalDays: 24, isPaid: true },
+      { name: "Partial Day", totalDays: 12, isPaid: true },
+      { name: "Sick", totalDays: 12, isPaid: true },
+      { name: "Other", totalDays: 6, isPaid: false },
+    ]);
+    await this.leaveTypeRepository.save(defaults);
+
+    return this.leaveTypeRepository.find({ order: { name: "ASC" } });
   }
 
   private async ensureTeamAccess(user: AuthenticatedUser, targetEmployeeId: string): Promise<void> {
@@ -77,7 +94,13 @@ export class LeavesService {
     return ok(records, "Leave requests fetched", { total: records.length });
   }
 
+  async listTypes() {
+    const types = await this.ensureDefaultLeaveTypes();
+    return ok(types, "Leave types fetched", { total: types.length });
+  }
+
   async apply(user: AuthenticatedUser, dto: ApplyLeaveDto) {
+    await this.ensureDefaultLeaveTypes();
     const employeeId = dto.employeeId ?? (await this.getCurrentEmployee(user)).id;
     await this.ensureTeamAccess(user, employeeId);
 
@@ -106,6 +129,86 @@ export class LeavesService {
 
     await this.leaveRequestRepository.save(request);
     return ok(request, "Leave request submitted");
+  }
+
+  private async ensureCanManageLeave(user: AuthenticatedUser, leave: LeaveRequest): Promise<void> {
+    if (isAdminRole(user.role)) {
+      return;
+    }
+
+    const currentEmployee = await this.getCurrentEmployee(user);
+    if (user.role === UserRole.EMPLOYEE) {
+      if (leave.employeeId !== currentEmployee.id) {
+        throw new ForbiddenException("Employees can manage only their own leave requests");
+      }
+      return;
+    }
+
+    if (user.role === UserRole.MANAGER) {
+      if (leave.employeeId === currentEmployee.id) {
+        return;
+      }
+      const isTeamMember = await this.employeeRepository.exists({
+        where: { id: leave.employeeId, reportingManagerId: currentEmployee.id },
+      });
+      if (!isTeamMember) {
+        throw new ForbiddenException("Managers can manage only team leave requests");
+      }
+    }
+  }
+
+  async update(id: string, user: AuthenticatedUser, dto: UpdateLeaveDto) {
+    const leave = await this.leaveRequestRepository.findOne({ where: { id } });
+    if (!leave) {
+      throw new NotFoundException("Leave request not found");
+    }
+
+    await this.ensureCanManageLeave(user, leave);
+    if (leave.status !== LeaveRequestStatus.PENDING) {
+      throw new ForbiddenException("Only pending leave requests can be edited");
+    }
+
+    if (dto.leaveTypeId) {
+      const leaveType = await this.leaveTypeRepository.findOne({ where: { id: dto.leaveTypeId } });
+      if (!leaveType) {
+        throw new NotFoundException("Leave type not found");
+      }
+      leave.leaveTypeId = dto.leaveTypeId;
+    }
+
+    if (dto.startDate) {
+      leave.startDate = dto.startDate.slice(0, 10);
+    }
+    if (dto.endDate) {
+      leave.endDate = dto.endDate.slice(0, 10);
+    }
+    if (dto.reason !== undefined) {
+      leave.reason = dto.reason;
+    }
+
+    const totalDays = differenceInCalendarDays(new Date(leave.endDate), new Date(leave.startDate)) + 1;
+    if (totalDays <= 0) {
+      throw new ForbiddenException("Invalid leave dates");
+    }
+    leave.totalDays = totalDays;
+
+    await this.leaveRequestRepository.save(leave);
+    return ok(leave, "Leave request updated");
+  }
+
+  async remove(id: string, user: AuthenticatedUser) {
+    const leave = await this.leaveRequestRepository.findOne({ where: { id } });
+    if (!leave) {
+      throw new NotFoundException("Leave request not found");
+    }
+
+    await this.ensureCanManageLeave(user, leave);
+    if (leave.status !== LeaveRequestStatus.PENDING && !isAdminRole(user.role)) {
+      throw new ForbiddenException("Only pending leave requests can be deleted");
+    }
+
+    await this.leaveRequestRepository.remove(leave);
+    return ok({ deleted: true }, "Leave request deleted");
   }
 
   async approve(id: string, user: AuthenticatedUser, dto: ReviewLeaveDto) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -44,6 +44,13 @@ export class AttendanceController {
   @ApiOperation({ summary: "Update attendance record by id" })
   update(@Param("id") id: string, @Body() dto: UpdateAttendanceDto, @CurrentUser() user: AuthenticatedUser) {
     return this.attendanceService.update(id, dto, user);
+  }
+
+  @Delete(":id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete attendance record by id" })
+  remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.remove(id, user);
   }
 
   @Get("report")

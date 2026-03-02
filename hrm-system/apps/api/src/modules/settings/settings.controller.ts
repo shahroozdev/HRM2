@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
-import { CreateDepartmentDto, UpdateAccessPolicyDto, UpdateCompanyDto } from "./dto/settings.dto";
+import { CreateDepartmentDto, CreateDesignationDto, CreateShiftAssignmentDto, CreateShiftDto, UpdateAccessPolicyDto, UpdateCompanyDto, UpdateDepartmentDto, UpdateDesignationDto, UpdateShiftAssignmentDto, UpdateShiftDto } from "./dto/settings.dto";
 import { SettingsService } from "./settings.service";
 
 @ApiTags("Settings")
@@ -46,11 +46,102 @@ export class SettingsController {
     return this.settingsService.createDepartment(user, dto);
   }
 
+  @Put("departments/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update department" })
+  updateDepartment(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateDepartmentDto) {
+    return this.settingsService.updateDepartment(id, user, dto);
+  }
+
+  @Delete("departments/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete department" })
+  deleteDepartment(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.deleteDepartment(id, user);
+  }
+
   @Get("designations")
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   @ApiOperation({ summary: "Get designations list" })
   getDesignations(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.getDesignations(user);
+  }
+
+  @Post("designations")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Create designation" })
+  createDesignation(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateDesignationDto) {
+    return this.settingsService.createDesignation(user, dto);
+  }
+
+  @Put("designations/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update designation" })
+  updateDesignation(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateDesignationDto) {
+    return this.settingsService.updateDesignation(id, user, dto);
+  }
+
+  @Delete("designations/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete designation" })
+  deleteDesignation(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.deleteDesignation(id, user);
+  }
+
+  @Get("shifts")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Get shift templates" })
+  getShifts(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getShifts(user);
+  }
+
+  @Post("shifts")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Create shift template with break times" })
+  createShift(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateShiftDto) {
+    return this.settingsService.createShift(user, dto);
+  }
+
+  @Put("shifts/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update shift template" })
+  updateShift(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateShiftDto) {
+    return this.settingsService.updateShift(id, user, dto);
+  }
+
+  @Delete("shifts/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete shift template" })
+  deleteShift(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.deleteShift(id, user);
+  }
+
+  @Get("shift-assignments")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Get employee shift assignments" })
+  getShiftAssignments(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getShiftAssignments(user);
+  }
+
+  @Post("shift-assignments")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Assign shift to employee for date range" })
+  createShiftAssignment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateShiftAssignmentDto) {
+    return this.settingsService.createShiftAssignment(user, dto);
+  }
+
+  @Put("shift-assignments/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Update employee shift assignment" })
+  updateShiftAssignment(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateShiftAssignmentDto) {
+    return this.settingsService.updateShiftAssignment(id, user, dto);
+  }
+
+  @Delete("shift-assignments/:id")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @ApiOperation({ summary: "Delete employee shift assignment" })
+  deleteShiftAssignment(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.deleteShiftAssignment(id, user);
   }
 
   @Get("access-policy")

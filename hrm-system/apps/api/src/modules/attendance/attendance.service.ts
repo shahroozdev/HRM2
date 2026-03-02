@@ -150,6 +150,20 @@ export class AttendanceService {
     return ok(record, "Attendance record updated");
   }
 
+  async remove(id: string, user: AuthenticatedUser) {
+    if (!isAdminRole(user.role)) {
+      throw new ForbiddenException("Only HR and Super Admin can delete attendance record");
+    }
+
+    const record = await this.attendanceRepository.findOne({ where: { id } });
+    if (!record) {
+      throw new NotFoundException("Attendance record not found");
+    }
+
+    await this.attendanceRepository.remove(record);
+    return ok({ deleted: true }, "Attendance record deleted");
+  }
+
   async report(user: AuthenticatedUser, query: Record<string, string | undefined>) {
     const employeeIds = await this.resolveScopeEmployeeIds(user);
 

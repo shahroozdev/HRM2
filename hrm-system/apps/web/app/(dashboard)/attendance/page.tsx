@@ -4,7 +4,7 @@ import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { useAttendance } from "@/hooks/use-attendance";
 import { useState, useMemo } from "react";
-import { canManualAttendance } from "@/lib/permissions";
+import { canEdit, canManualAttendance } from "@/lib/permissions";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useAccessPolicy } from "@/hooks/use-access-policy";
 import { api } from "@/lib/api";
@@ -37,6 +37,7 @@ export default function AttendancePage(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const rows = attendance.data?.data ?? [];
   const canPickEmployee = ["super_admin", "hr_manager", "manager"].includes(session?.user?.role ?? "");
+  const canManageAttendance = canEdit(session?.user?.role, "attendance");
 
   const monthStart = useMemo(() => new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1), [monthCursor]);
   const monthEnd = useMemo(() => new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0), [monthCursor]);
@@ -104,6 +105,23 @@ export default function AttendancePage(): React.JSX.Element {
     }
   };
 
+  const editRecord = async (row: any) => {
+    const status = window.prompt("Status (present/absent/late/half_day)", row.status ?? "present");
+    if (status === null) return;
+    const notesInput = window.prompt("Notes", row.notes ?? "");
+    if (notesInput === null) return;
+    await api.put(`/attendance/${row.id}`, { status: status.trim(), notes: notesInput.trim() || null });
+    toast.success("Attendance updated");
+    await attendance.refetch();
+  };
+
+  const deleteRecord = async (row: any) => {
+    if (!window.confirm(`Delete attendance for ${row.date}?`)) return;
+    await api.delete(`/attendance/${row.id}`);
+    toast.success("Attendance deleted");
+    await attendance.refetch();
+  };
+
   return (
     <div>
       <PageHeader title="Attendance" description="Daily attendance tracking" action={<div className="flex gap-2"><input value={date} onChange={(e) => setDate(e.target.value)} type="date" className="rounded border px-3" />{canManualAttendance(session?.user?.role, accessPolicy) && <button onClick={() => setMarkModal(true)} className="rounded bg-[var(--accent)] px-3 py-2 text-white" type="button">Manual Mark</button>}</div>} />
@@ -168,7 +186,35 @@ export default function AttendancePage(): React.JSX.Element {
         </div>
       </div>
       <div className="mb-4 flex gap-2 text-xs"><span className="rounded-full bg-emerald-100 px-2 py-1">Present: {rows.filter((r: any) => r.status === "present").length}</span><span className="rounded-full bg-rose-100 px-2 py-1">Absent: {rows.filter((r: any) => r.status === "absent").length}</span><span className="rounded-full bg-amber-100 px-2 py-1">Late: {rows.filter((r: any) => r.status === "late").length}</span></div>
-      <DataTable data={rows} columns={[{ key: "employeeId", header: "Employee" }, { key: "date", header: "Date" }, { key: "checkIn", header: "Check In" }, { key: "checkOut", header: "Check Out" }, { key: "status", header: "Status" }]} pagination={{ page: 1, pageSize: 20, total: rows.length }} loading={attendance.isLoading} />
+      <DataTable
+        data={rows}
+        columns={[
+          { key: "employeeId", header: "Employee" },
+          { key: "date", header: "Date" },
+          { key: "checkIn", header: "Check In" },
+          { key: "checkOut", header: "Check Out" },
+          { key: "status", header: "Status" },
+          {
+            key: "actions",
+            header: "Actions",
+            render: (row: any) =>
+              canManageAttendance ? (
+                <div className="flex gap-2">
+                  <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editRecord(row)}>
+                    Edit
+                  </button>
+                  <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => deleteRecord(row)}>
+                    Delete
+                  </button>
+                </div>
+              ) : (
+                "-"
+              ),
+          },
+        ]}
+        pagination={{ page: 1, pageSize: 20, total: rows.length }}
+        loading={attendance.isLoading}
+      />
       {markModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-[var(--surface-bg)] p-5">

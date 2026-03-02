@@ -30,3 +30,25 @@ export class ReviewLeaveDto {
   @IsString()
   remarks?: string;
 }
+
+export class UpdateLeaveDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  leaveTypeId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}

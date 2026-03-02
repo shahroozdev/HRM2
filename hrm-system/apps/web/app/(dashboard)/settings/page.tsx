@@ -10,7 +10,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-const tabs = ["company", "leave-rules", "office-timings", "appearance", "access-control"] as const;
+const tabs = ["company", "leave-rules", "office-timings", "shifts", "appearance", "access-control"] as const;
 const roles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
 const resources: Resource[] = ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"];
 const manualRoles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
@@ -129,11 +129,20 @@ export default function SettingsPage(): React.JSX.Element {
   const { theme, setTheme } = useTheme();
   const company = useQuery({ queryKey: ["company"], queryFn: async () => (await api.get("/settings/company")).data.data });
   const departments = useQuery({ queryKey: ["departments"], queryFn: async () => (await api.get("/settings/departments")).data.data ?? [] });
+  const designations = useQuery({ queryKey: ["designations"], queryFn: async () => (await api.get("/settings/designations")).data.data ?? [] });
+  const shifts = useQuery({ queryKey: ["shifts"], queryFn: async () => (await api.get("/settings/shifts")).data.data ?? [] });
+  const shiftAssignments = useQuery({ queryKey: ["shift-assignments"], queryFn: async () => (await api.get("/settings/shift-assignments")).data.data ?? [] });
+  const employees = useQuery({ queryKey: ["employees-for-settings"], queryFn: async () => (await api.get("/employees")).data.data ?? [] });
 
   const [companyForm, setCompanyForm] = useState({ name: "", email: "", phone: "", address: "" });
   const [deptForm, setDeptForm] = useState({ name: "", description: "" });
+  const [designationForm, setDesignationForm] = useState({ title: "", departmentId: "" });
   const [ruleForm, setRuleForm] = useState({ name: "", maxDays: 12, paid: true });
   const [officeForm, setOfficeForm] = useState({ start: "09:00", end: "18:00", weeklyHours: 40 });
+  const [shiftForm, setShiftForm] = useState({ name: "", startTime: "09:00", endTime: "18:00", weeklyOffDays: "saturday,sunday" });
+  const [breakForm, setBreakForm] = useState({ label: "Lunch Break", startTime: "13:00", endTime: "14:00", paid: false });
+  const [breaks, setBreaks] = useState<Array<{ label: string; startTime: string; endTime: string; paid: boolean }>>([]);
+  const [assignmentForm, setAssignmentForm] = useState({ employeeId: "", shiftId: "", startDate: "", endDate: "", notes: "" });
   const [logoUrl, setLogoUrl] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem("hrm-company-logo");
@@ -182,6 +191,98 @@ export default function SettingsPage(): React.JSX.Element {
     setDeptForm({ name: "", description: "" });
     await departments.refetch();
     toast.success("Department created");
+  };
+
+  const editDepartment = async (department: any) => {
+    const name = window.prompt("Department name", department.name ?? "");
+    if (name === null) return;
+    const description = window.prompt("Description", department.description ?? "");
+    if (description === null) return;
+
+    await api.put(`/settings/departments/${department.id}`, {
+      name: name.trim() || department.name,
+      description: description.trim() || null,
+    });
+    await departments.refetch();
+    toast.success("Department updated");
+  };
+
+  const deleteDepartment = async (department: any) => {
+    if (!window.confirm(`Delete department "${department.name}"?`)) return;
+    await api.delete(`/settings/departments/${department.id}`);
+    await departments.refetch();
+    await designations.refetch();
+    toast.success("Department deleted");
+  };
+
+  const createDesignation = async () => {
+    if (!designationForm.title.trim() || !designationForm.departmentId) {
+      toast.error("Designation title and department are required");
+      return;
+    }
+    await api.post("/settings/designations", {
+      title: designationForm.title.trim(),
+      departmentId: designationForm.departmentId,
+    });
+    setDesignationForm({ title: "", departmentId: "" });
+    await designations.refetch();
+    toast.success("Designation created");
+  };
+
+  const editDesignation = async (designation: any) => {
+    const title = window.prompt("Designation title", designation.title ?? "");
+    if (title === null) return;
+    await api.put(`/settings/designations/${designation.id}`, {
+      title: title.trim() || designation.title,
+      departmentId: designation.departmentId,
+    });
+    await designations.refetch();
+    toast.success("Designation updated");
+  };
+
+  const deleteDesignation = async (designation: any) => {
+    if (!window.confirm(`Delete designation "${designation.title}"?`)) return;
+    await api.delete(`/settings/designations/${designation.id}`);
+    await designations.refetch();
+    toast.success("Designation deleted");
+  };
+
+  const addBreak = () => {
+    if (!breakForm.label.trim() || !breakForm.startTime || !breakForm.endTime) {
+      toast.error("Break label and time range are required");
+      return;
+    }
+    setBreaks((prev) => [...prev, { ...breakForm, label: breakForm.label.trim() }]);
+    setBreakForm({ label: "Lunch Break", startTime: "13:00", endTime: "14:00", paid: false });
+  };
+
+  const createShift = async () => {
+    if (!shiftForm.name.trim()) {
+      toast.error("Shift name is required");
+      return;
+    }
+    await api.post("/settings/shifts", {
+      name: shiftForm.name.trim(),
+      startTime: shiftForm.startTime,
+      endTime: shiftForm.endTime,
+      weeklyOffDays: shiftForm.weeklyOffDays.split(",").map((item) => item.trim()).filter(Boolean),
+      breaks,
+    });
+    setShiftForm({ name: "", startTime: "09:00", endTime: "18:00", weeklyOffDays: "saturday,sunday" });
+    setBreaks([]);
+    await shifts.refetch();
+    toast.success("Shift template created");
+  };
+
+  const assignShift = async () => {
+    if (!assignmentForm.employeeId || !assignmentForm.shiftId || !assignmentForm.startDate || !assignmentForm.endDate) {
+      toast.error("Employee, shift and date range are required");
+      return;
+    }
+    await api.post("/settings/shift-assignments", assignmentForm);
+    setAssignmentForm({ employeeId: "", shiftId: "", startDate: "", endDate: "", notes: "" });
+    await shiftAssignments.refetch();
+    toast.success("Shift assigned");
   };
 
   const addRule = () => {
@@ -273,8 +374,56 @@ export default function SettingsPage(): React.JSX.Element {
             <ul className="mt-4 space-y-2 text-sm">
               {(departments.data ?? []).map((d: any) => (
                 <li key={d.id} className="rounded border px-3 py-2">
-                  <div className="font-medium">{d.name}</div>
-                  <div className="text-[var(--muted-text)]">{d.description || "No description"}</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{d.name}</div>
+                      <div className="text-[var(--muted-text)]">{d.description || "No description"}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editDepartment(d)}>
+                        Edit
+                      </button>
+                      <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => deleteDepartment(d)}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">Designation Setup</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              <input value={designationForm.title} onChange={(e) => setDesignationForm((s) => ({ ...s, title: e.target.value }))} placeholder="Designation Title" className="rounded border p-2" />
+              <select value={designationForm.departmentId} onChange={(e) => setDesignationForm((s) => ({ ...s, departmentId: e.target.value }))} className="rounded border p-2 md:col-span-2">
+                <option value="">Select Department</option>
+                {(departments.data ?? []).map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={createDesignation} type="button">
+              Create Designation
+            </button>
+            <ul className="mt-4 space-y-2 text-sm">
+              {(designations.data ?? []).map((item: any) => (
+                <li key={item.id} className="rounded border px-3 py-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{item.title}</div>
+                      <div className="text-[var(--muted-text)]">{item.department?.name ?? "No department"}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editDesignation(item)}>
+                        Edit
+                      </button>
+                      <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => deleteDesignation(item)}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -321,6 +470,100 @@ export default function SettingsPage(): React.JSX.Element {
           <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={() => toast.success("Office timings saved")}>
             Save Office Timings
           </button>
+        </div>
+      )}
+
+      {activeTab === "shifts" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">Create Shift Template</h3>
+            <div className="grid gap-3 md:grid-cols-4">
+              <input value={shiftForm.name} onChange={(e) => setShiftForm((s) => ({ ...s, name: e.target.value }))} placeholder="Shift Name" className="rounded border p-2" />
+              <input type="time" value={shiftForm.startTime} onChange={(e) => setShiftForm((s) => ({ ...s, startTime: e.target.value }))} className="rounded border p-2" />
+              <input type="time" value={shiftForm.endTime} onChange={(e) => setShiftForm((s) => ({ ...s, endTime: e.target.value }))} className="rounded border p-2" />
+              <input value={shiftForm.weeklyOffDays} onChange={(e) => setShiftForm((s) => ({ ...s, weeklyOffDays: e.target.value }))} placeholder="Weekly off (comma-separated)" className="rounded border p-2" />
+            </div>
+            <div className="mt-4 rounded border p-3">
+              <h4 className="mb-2 font-medium">Break Rules (Lunch, Prayer, etc.)</h4>
+              <div className="grid gap-2 md:grid-cols-5">
+                <select value={breakForm.label} onChange={(e) => setBreakForm((s) => ({ ...s, label: e.target.value }))} className="rounded border p-2">
+                  <option>Lunch Break</option>
+                  <option>Prayer Break</option>
+                  <option>Tea Break</option>
+                  <option>Custom Break</option>
+                </select>
+                <input type="time" value={breakForm.startTime} onChange={(e) => setBreakForm((s) => ({ ...s, startTime: e.target.value }))} className="rounded border p-2" />
+                <input type="time" value={breakForm.endTime} onChange={(e) => setBreakForm((s) => ({ ...s, endTime: e.target.value }))} className="rounded border p-2" />
+                <select value={breakForm.paid ? "paid" : "unpaid"} onChange={(e) => setBreakForm((s) => ({ ...s, paid: e.target.value === "paid" }))} className="rounded border p-2">
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+                <button className="rounded border px-3 py-2" type="button" onClick={addBreak}>Add Break</button>
+              </div>
+              <ul className="mt-3 space-y-2 text-sm">
+                {breaks.map((item, index) => (
+                  <li key={`${item.label}-${index}`} className="flex items-center justify-between rounded border px-3 py-2">
+                    <span>{item.label} | {item.startTime}-{item.endTime} | {item.paid ? "Paid" : "Unpaid"}</span>
+                    <button type="button" className="rounded bg-rose-600 px-2 py-1 text-white" onClick={() => setBreaks((prev) => prev.filter((_, i) => i !== index))}>Delete</button>
+                  </li>
+                ))}
+                {!breaks.length && <li className="text-[var(--muted-text)]">No breaks added yet.</li>}
+              </ul>
+            </div>
+            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={createShift}>
+              Save Shift Template
+            </button>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">Assign Shift to Employee (Days/Months)</h3>
+            <div className="grid gap-3 md:grid-cols-5">
+              <select value={assignmentForm.employeeId} onChange={(e) => setAssignmentForm((s) => ({ ...s, employeeId: e.target.value }))} className="rounded border p-2">
+                <option value="">Select Employee</option>
+                {(employees.data ?? []).map((emp: any) => (
+                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeId})</option>
+                ))}
+              </select>
+              <select value={assignmentForm.shiftId} onChange={(e) => setAssignmentForm((s) => ({ ...s, shiftId: e.target.value }))} className="rounded border p-2">
+                <option value="">Select Shift</option>
+                {(shifts.data ?? []).map((shift: any) => (
+                  <option key={shift.id} value={shift.id}>{shift.name} ({shift.startTime}-{shift.endTime})</option>
+                ))}
+              </select>
+              <input type="date" value={assignmentForm.startDate} onChange={(e) => setAssignmentForm((s) => ({ ...s, startDate: e.target.value }))} className="rounded border p-2" />
+              <input type="date" value={assignmentForm.endDate} onChange={(e) => setAssignmentForm((s) => ({ ...s, endDate: e.target.value }))} className="rounded border p-2" />
+              <input value={assignmentForm.notes} onChange={(e) => setAssignmentForm((s) => ({ ...s, notes: e.target.value }))} placeholder="Notes (optional)" className="rounded border p-2" />
+            </div>
+            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={assignShift}>
+              Assign Shift
+            </button>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">Shift Templates</h3>
+            <ul className="space-y-2 text-sm">
+              {(shifts.data ?? []).map((item: any) => (
+                <li key={item.id} className="rounded border px-3 py-2">
+                  <div className="font-medium">{item.name} ({item.startTime}-{item.endTime})</div>
+                  <div className="text-[var(--muted-text)]">Weekly Off: {(item.weeklyOffDays ?? []).join(", ") || "-"}</div>
+                  <div className="text-[var(--muted-text)]">Breaks: {(item.breaks ?? []).map((b: any) => `${b.label} ${b.startTime}-${b.endTime}`).join(" | ") || "-"}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">Assigned Shifts</h3>
+            <ul className="space-y-2 text-sm">
+              {(shiftAssignments.data ?? []).map((item: any) => (
+                <li key={item.id} className="rounded border px-3 py-2">
+                  <div className="font-medium">{item.employeeName} ({item.employeeCode})</div>
+                  <div className="text-[var(--muted-text)]">{item.shiftName} | {item.startDate} to {item.endDate}</div>
+                  <div className="text-[var(--muted-text)]">{item.notes || "No notes"}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

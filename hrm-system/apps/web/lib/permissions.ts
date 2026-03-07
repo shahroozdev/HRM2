@@ -1,6 +1,6 @@
 export type AppRole = "super_admin" | "hr_manager" | "manager" | "employee";
 
-export type Resource = "dashboard" | "employees" | "attendance" | "leaves" | "payroll" | "documents" | "reports" | "settings";
+export type Resource = "dashboard" | "employees" | "attendance" | "leaves" | "payroll" | "documents" | "reports" | "messages" | "settings";
 
 export type AccessPolicy = {
   sidebar: Record<AppRole, Resource[]>;
@@ -11,10 +11,10 @@ export type AccessPolicy = {
 
 const defaultPolicy: AccessPolicy = {
   sidebar: {
-    super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"],
-    hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports"],
-    manager: ["dashboard", "employees", "attendance", "leaves", "documents", "reports"],
-    employee: ["dashboard", "attendance", "leaves", "documents", "payroll"],
+    super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages", "settings"],
+    hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages"],
+    manager: ["dashboard", "employees", "attendance", "leaves", "documents", "reports", "messages"],
+    employee: ["dashboard", "attendance", "leaves", "documents", "payroll", "messages"],
   },
   actions: {
     attendanceManualMark: ["super_admin", "hr_manager", "manager"],
@@ -22,10 +22,10 @@ const defaultPolicy: AccessPolicy = {
 };
 
 const editMatrix: Record<AppRole, Resource[]> = {
-  super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"],
-  hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports"],
-  manager: ["dashboard", "attendance", "leaves", "documents"],
-  employee: ["dashboard", "leaves", "documents", "payroll"],
+  super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages", "settings"],
+  hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages"],
+  manager: ["dashboard", "attendance", "leaves", "documents", "messages"],
+  employee: ["dashboard", "leaves", "documents", "payroll", "messages"],
 };
 
 export function getDefaultAccessPolicy(): AccessPolicy {

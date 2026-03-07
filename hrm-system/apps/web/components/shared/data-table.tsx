@@ -2,12 +2,14 @@
 
 import { Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { format } from "date-fns";
 import { EmptyState } from "./empty-state";
 import { SearchInput } from "./search-input";
 
 export type ColumnDef<T> = {
   key: keyof T | string;
   header: string;
+  type?: "text" | "date" | "time" | "status";
   sortable?: boolean;
   render?: (row: T) => React.ReactNode;
 };
@@ -17,6 +19,64 @@ export type PaginationMeta = {
   pageSize: number;
   total: number;
 };
+
+function getByPath(obj: unknown, path: string): unknown {
+  if (!path) return obj;
+  const normalized = path.replace(/\[(\d+)\]/g, ".$1");
+  return normalized.split(".").filter(Boolean).reduce<unknown>((acc, segment) => {
+    if (acc == null) return undefined;
+    if (Array.isArray(acc)) {
+      const index = Number(segment);
+      return Number.isInteger(index) ? acc[index] : undefined;
+    }
+    if (typeof acc === "object") {
+      return (acc as Record<string, unknown>)[segment];
+    }
+    return undefined;
+  }, obj);
+}
+
+function formatDateValue(value: unknown): string {
+  if (!value) return "-";
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return format(parsed, "dd MMM, yy");
+}
+
+function formatTimeValue(value: unknown): string {
+  if (!value) return "-";
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return format(parsed, "hh:mm a");
+}
+
+function statusClasses(status: string): string {
+  const s = status.toLowerCase();
+  if (["present", "active", "approved", "paid", "processed"].includes(s)) {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+  }
+  if (["absent", "inactive", "rejected", "terminated"].includes(s)) {
+    return "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
+  }
+  if (["leave", "on_leave", "on leave", "pending", ].includes(s)) {
+    return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+  }
+  if (["late", "half_day", "half day"].includes(s)) {
+    return "bg-[#fef3c6] text-orange-700 ";
+  }
+  return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+}
+
+function renderTypedValue(value: unknown, type: ColumnDef<any>["type"]): React.ReactNode {
+  const colType = type ?? "text";
+  if (colType === "date") return formatDateValue(value);
+  if (colType === "time") return formatTimeValue(value);
+  if (colType === "status") {
+    const text = value == null || value === "" ? "-" : String(value);
+    return <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${statusClasses(text)}`}>{text.replace("_", " ")}</span>;
+  }
+  return value == null || value === "" ? "-" : String(value);
+}
 
 export function DataTable<T extends { id?: string }>({
   data,
@@ -41,8 +101,8 @@ export function DataTable<T extends { id?: string }>({
   const filtered = useMemo(() => {
     const rows = data.filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
     const sorted = [...rows].sort((a, b) => {
-      const va = (a as any)[sortKey] ?? "";
-      const vb = (b as any)[sortKey] ?? "";
+      const va = getByPath(a, sortKey) ?? "";
+      const vb = getByPath(b, sortKey) ?? "";
       return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
     });
     return sorted;
@@ -50,7 +110,7 @@ export function DataTable<T extends { id?: string }>({
 
   const exportCSV = () => {
     const header = columns.map((c) => c.header).join(",");
-    const rows = filtered.map((row) => columns.map((c) => JSON.stringify((row as any)[c.key as string] ?? "")).join(","));
+    const rows = filtered.map((row) => columns.map((c) => JSON.stringify(getByPath(row, String(c.key)) ?? "")).join(","));
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -108,7 +168,11 @@ export function DataTable<T extends { id?: string }>({
                       const id = String(row.id ?? "");
                       setSelected((prev) => e.target.checked ? [...prev, id] : prev.filter((v) => v !== id));
                     }} /></td>
-                    {columns.map((col) => <td key={String(col.key)} className="py-2">{col.render ? col.render(row) : String((row as any)[col.key as string] ?? "-")}</td>)}
+                    {columns.map((col) => (
+                      <td key={String(col.key)} className="py-2">
+                        {col.render ? col.render(row) : renderTypedValue(getByPath(row, String(col.key)), col.type)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

@@ -10,3 +10,5 @@ export * from "./payroll.entity";
 export * from "./document.entity";
 export * from "./notification.entity";
 export * from "./company-setting.entity";
+export * from "./slack-read-receipt.entity";
+export * from "./biotime-log.entity";

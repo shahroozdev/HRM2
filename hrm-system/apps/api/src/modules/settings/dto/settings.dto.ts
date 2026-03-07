@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsBoolean, IsObject, IsOptional, IsString } from "class-validator";
+import { IsArray, IsBoolean, IsEmail, IsInt, IsObject, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class UpdateCompanyDto {
   @ApiPropertyOptional()
@@ -106,6 +106,13 @@ export class CreateShiftDto {
     endTime: string;
     paid?: boolean;
   }>;
+
+  @ApiPropertyOptional({ description: "Grace period before late status (minutes)", minimum: 0, maximum: 180, default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(180)
+  relaxationMinutes?: number;
 }
 
 export class UpdateShiftDto {
@@ -139,6 +146,13 @@ export class UpdateShiftDto {
     endTime: string;
     paid?: boolean;
   }>;
+
+  @ApiPropertyOptional({ description: "Grace period before late status (minutes)", minimum: 0, maximum: 180 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(180)
+  relaxationMinutes?: number;
 }
 
 export class CreateShiftAssignmentDto {
@@ -200,4 +214,101 @@ export class UpdateAccessPolicyDto {
   @ApiProperty({ type: Object })
   @IsObject()
   policy!: Record<string, unknown>;
+}
+
+export class UpdateSystemConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  databaseUri?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  smtpHost?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  smtpPort?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  smtpUser?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  smtpPass?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  smtpFrom?: string;
+}
+
+export class UpdateSlackIntegrationDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  botToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  signingSecret?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  appToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  defaultChannel?: string;
+}
+
+export class UpdateBiotimeIntegrationDto {
+  @ApiPropertyOptional({ example: "https://your-ngrok-url.ngrok-free.dev" })
+  @IsOptional()
+  @IsString()
+  baseUrl?: string;
+
+  @ApiPropertyOptional({ example: "/personnel/api/employees/" })
+  @IsOptional()
+  @IsString()
+  employeesEndpoint?: string;
+
+  @ApiPropertyOptional({ example: "/iclock/api/transactions/" })
+  @IsOptional()
+  @IsString()
+  attendanceEndpoint?: string;
+
+  @ApiPropertyOptional({ example: "/iclock/api/transactions/" })
+  @IsOptional()
+  @IsString()
+  logsEndpoint?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ default: 15 })
+  @IsOptional()
+  @IsString()
+  pollIntervalSeconds?: string;
+
+  @ApiPropertyOptional({ default: 60 })
+  @IsOptional()
+  @IsString()
+  lookbackMinutes?: string;
+}
+
+export class UpdateSlackEmailDto {
+  @ApiProperty()
+  @IsEmail()
+  slackEmail!: string;
 }

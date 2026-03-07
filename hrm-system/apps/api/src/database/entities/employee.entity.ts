@@ -25,6 +25,9 @@ export class Employee {
   @Column({ unique: true })
   employeeId!: string;
 
+  @Column({ type: "varchar", nullable: true, unique: true })
+  biometricCode!: string | null;
+
   @Column({ unique: true })
   userId!: string;
 

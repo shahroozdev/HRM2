@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarCheck2, LayoutDashboard, Users, WalletCards } from "lucide-react";
+import { CalendarCheck2, LayoutDashboard, MessageSquare, Users, WalletCards } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ const tabs = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
   { href: "/employees", icon: Users, label: "Employees" },
   { href: "/attendance", icon: CalendarCheck2, label: "Attendance" },
+  { href: "/messages", icon: MessageSquare, label: "Messages" },
   { href: "/leaves", icon: WalletCards, label: "Leaves" },
 ];
 

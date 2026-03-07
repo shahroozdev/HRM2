@@ -29,6 +29,10 @@ export class LeavesService {
     return employee;
   }
 
+  private async getCurrentEmployeeOptional(user: AuthenticatedUser): Promise<Employee | null> {
+    return this.employeeRepository.findOne({ where: { userId: user.sub } });
+  }
+
   private async ensureDefaultLeaveTypes(): Promise<LeaveType[]> {
     const existing = await this.leaveTypeRepository.find({ order: { name: "ASC" } });
     if (existing.length) {
@@ -221,9 +225,12 @@ export class LeavesService {
       throw new ForbiddenException("Employees cannot approve leaves");
     }
 
-    const reviewer = await this.getCurrentEmployee(user);
+    if (leave.status !== LeaveRequestStatus.PENDING) {
+      throw new ForbiddenException("Only pending leave requests can be approved");
+    }
 
     if (user.role === UserRole.MANAGER) {
+      const reviewer = await this.getCurrentEmployee(user);
       const isTeamMember = await this.employeeRepository.exists({
         where: { id: leave.employeeId, reportingManagerId: reviewer.id },
       });
@@ -233,7 +240,8 @@ export class LeavesService {
     }
 
     leave.status = LeaveRequestStatus.APPROVED;
-    leave.reviewedBy = reviewer.id;
+    const reviewer = await this.getCurrentEmployeeOptional(user);
+    leave.reviewedBy = reviewer?.id ?? null;
     leave.reviewedAt = new Date();
     leave.remarks = dto.remarks ?? null;
     await this.leaveRequestRepository.save(leave);
@@ -251,8 +259,12 @@ export class LeavesService {
       throw new ForbiddenException("Employees cannot reject leaves");
     }
 
-    const reviewer = await this.getCurrentEmployee(user);
+    if (leave.status !== LeaveRequestStatus.PENDING) {
+      throw new ForbiddenException("Only pending leave requests can be rejected");
+    }
+
     if (user.role === UserRole.MANAGER) {
+      const reviewer = await this.getCurrentEmployee(user);
       const isTeamMember = await this.employeeRepository.exists({
         where: { id: leave.employeeId, reportingManagerId: reviewer.id },
       });
@@ -262,7 +274,8 @@ export class LeavesService {
     }
 
     leave.status = LeaveRequestStatus.REJECTED;
-    leave.reviewedBy = reviewer.id;
+    const reviewer = await this.getCurrentEmployeeOptional(user);
+    leave.reviewedBy = reviewer?.id ?? null;
     leave.reviewedAt = new Date();
     leave.remarks = dto.remarks ?? null;
     await this.leaveRequestRepository.save(leave);

@@ -15,6 +15,7 @@ import {
   Notification,
   Payroll,
   SalaryStructure,
+  SlackReadReceipt,
   User,
 } from "./database/entities";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -26,6 +27,8 @@ import { DocumentsModule } from "./modules/documents/documents.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { SettingsModule } from "./modules/settings/settings.module";
+import { SlackModule } from "./modules/slack/slack.module";
+import { BiotimeModule } from "./modules/biotime/biotime.module";
 
 @Module({
   imports: [
@@ -63,6 +66,7 @@ import { SettingsModule } from "./modules/settings/settings.module";
             Document,
             Notification,
             CompanySetting,
+            SlackReadReceipt,
           ],
           migrations: [join(__dirname, "database/migrations/*.js")],
         };
@@ -77,6 +81,8 @@ import { SettingsModule } from "./modules/settings/settings.module";
     ReportsModule,
     NotificationsModule,
     SettingsModule,
+    SlackModule,
+    BiotimeModule,
   ],
 })
 export class AppModule {}

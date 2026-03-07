@@ -1,12 +1,14 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomUUID } from "crypto";
 import { In, Repository } from "typeorm";
 import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
+import { decryptJson, encryptJson, maskSecret } from "../../common/utils/crypto.util";
 import { ok } from "../../common/utils/response.util";
-import { CompanySetting, Department, Designation, Employee } from "../../database/entities";
-import { CreateDepartmentDto, CreateDesignationDto, CreateShiftAssignmentDto, CreateShiftDto, UpdateAccessPolicyDto, UpdateCompanyDto, UpdateDepartmentDto, UpdateDesignationDto, UpdateShiftAssignmentDto, UpdateShiftDto } from "./dto/settings.dto";
+import { CompanySetting, Department, Designation, Employee, User } from "../../database/entities";
+import { CreateDepartmentDto, CreateDesignationDto, CreateShiftAssignmentDto, CreateShiftDto, UpdateAccessPolicyDto, UpdateBiotimeIntegrationDto, UpdateCompanyDto, UpdateDepartmentDto, UpdateDesignationDto, UpdateShiftAssignmentDto, UpdateShiftDto, UpdateSlackEmailDto, UpdateSlackIntegrationDto, UpdateSystemConfigDto } from "./dto/settings.dto";
 
 @Injectable()
 export class SettingsService {
@@ -15,6 +17,8 @@ export class SettingsService {
     @InjectRepository(Department) private readonly departmentRepository: Repository<Department>,
     @InjectRepository(Designation) private readonly designationRepository: Repository<Designation>,
     @InjectRepository(Employee) private readonly employeeRepository: Repository<Employee>,
+    @InjectRepository(User) private readonly userRepository: Repository<User>,
+    private readonly configService: ConfigService,
   ) {}
 
   private ensureAdmin(user: AuthenticatedUser): void {
@@ -29,13 +33,45 @@ export class SettingsService {
     }
   }
 
+  private getEncryptionSecret(): string {
+    return (
+      this.configService.get<string>("SETTINGS_ENCRYPTION_KEY") ??
+      this.configService.get<string>("JWT_SECRET", "fallback-secret")
+    );
+  }
+
+  private async getEncryptedSetting<T extends Record<string, unknown>>(key: string, defaults: T): Promise<T> {
+    const setting = await this.companyRepository.findOne({ where: { key } });
+    if (!setting) {
+      return defaults;
+    }
+
+    const raw = setting.value as Record<string, unknown>;
+    if (raw?.encrypted && raw?.payload) {
+      return decryptJson<T>(raw.payload as any, this.getEncryptionSecret());
+    }
+
+    return { ...defaults, ...(raw as T) };
+  }
+
+  private async saveEncryptedSetting<T extends Record<string, unknown>>(key: string, value: T): Promise<void> {
+    const payload = encryptJson(value, this.getEncryptionSecret());
+    let setting = await this.companyRepository.findOne({ where: { key } });
+    if (!setting) {
+      setting = this.companyRepository.create({ key, value: { encrypted: true, payload } });
+    } else {
+      setting.value = { encrypted: true, payload };
+    }
+    await this.companyRepository.save(setting);
+  }
+
   private defaultAccessPolicy() {
     return {
       sidebar: {
-        super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"],
-        hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports"],
-        manager: ["dashboard", "employees", "attendance", "leaves", "documents", "reports"],
-        employee: ["dashboard", "attendance", "leaves", "documents", "payroll"],
+        super_admin: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages", "settings"],
+        hr_manager: ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages"],
+        manager: ["dashboard", "employees", "attendance", "leaves", "documents", "reports", "messages"],
+        employee: ["dashboard", "attendance", "leaves", "documents", "payroll", "messages"],
       },
       actions: {
         attendanceManualMark: ["super_admin", "hr_manager", "manager"],
@@ -262,6 +298,7 @@ export class SettingsService {
       name: dto.name,
       startTime: dto.startTime,
       endTime: dto.endTime,
+      relaxationMinutes: user.role === UserRole.SUPER_ADMIN ? Math.max(0, Number(dto.relaxationMinutes ?? 0)) : 0,
       weeklyOffDays: dto.weeklyOffDays ?? [],
       breaks: (dto.breaks ?? []).map((item) => ({
         label: item.label,
@@ -294,6 +331,10 @@ export class SettingsService {
     shifts[index] = {
       ...shifts[index],
       ...dto,
+      relaxationMinutes:
+        user.role === UserRole.SUPER_ADMIN
+          ? (dto.relaxationMinutes !== undefined ? Math.max(0, Number(dto.relaxationMinutes)) : shifts[index].relaxationMinutes ?? 0)
+          : shifts[index].relaxationMinutes ?? 0,
       breaks: dto.breaks
         ? dto.breaks.map((item) => ({
             label: item.label,
@@ -445,5 +486,158 @@ export class SettingsService {
     };
     await this.companyRepository.save(setting);
     return ok({ deleted: true }, "Shift assignment deleted");
+  }
+
+  async getSystemConfig(user: AuthenticatedUser) {
+    this.ensureSuperAdmin(user);
+    const settings = await this.getEncryptedSetting("system_config_secure", {
+      databaseUri: "",
+      smtpHost: "",
+      smtpPort: "",
+      smtpUser: "",
+      smtpPass: "",
+      smtpFrom: "",
+    });
+
+    return ok(
+      {
+        databaseUri: maskSecret(String(settings.databaseUri ?? "")),
+        smtpHost: String(settings.smtpHost ?? ""),
+        smtpPort: String(settings.smtpPort ?? ""),
+        smtpUser: String(settings.smtpUser ?? ""),
+        smtpPass: maskSecret(String(settings.smtpPass ?? "")),
+        smtpFrom: String(settings.smtpFrom ?? ""),
+        configured: {
+          databaseUri: Boolean(settings.databaseUri),
+          smtp: Boolean(settings.smtpHost && settings.smtpUser && settings.smtpPass),
+        },
+      },
+      "System template config fetched",
+    );
+  }
+
+  async updateSystemConfig(user: AuthenticatedUser, dto: UpdateSystemConfigDto) {
+    this.ensureSuperAdmin(user);
+    const current = await this.getEncryptedSetting("system_config_secure", {
+      databaseUri: "",
+      smtpHost: "",
+      smtpPort: "",
+      smtpUser: "",
+      smtpPass: "",
+      smtpFrom: "",
+    });
+
+    const updated = {
+      ...current,
+      ...Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)),
+    };
+
+    await this.saveEncryptedSetting("system_config_secure", updated);
+    return ok({ saved: true }, "System template config saved securely");
+  }
+
+  async getSlackIntegration(user: AuthenticatedUser) {
+    this.ensureSuperAdmin(user);
+    const settings = await this.getEncryptedSetting("slack_integration_secure", {
+      botToken: "",
+      signingSecret: "",
+      appToken: "",
+      defaultChannel: "",
+    });
+
+    return ok(
+      {
+        botToken: maskSecret(String(settings.botToken ?? "")),
+        signingSecret: maskSecret(String(settings.signingSecret ?? "")),
+        appToken: maskSecret(String(settings.appToken ?? "")),
+        defaultChannel: String(settings.defaultChannel ?? ""),
+        configured: Boolean(settings.botToken && settings.signingSecret),
+      },
+      "Slack integration fetched",
+    );
+  }
+
+  async updateSlackIntegration(user: AuthenticatedUser, dto: UpdateSlackIntegrationDto) {
+    this.ensureSuperAdmin(user);
+    const current = await this.getEncryptedSetting("slack_integration_secure", {
+      botToken: "",
+      signingSecret: "",
+      appToken: "",
+      defaultChannel: "",
+    });
+
+    const updated = {
+      ...current,
+      ...Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)),
+    };
+
+    await this.saveEncryptedSetting("slack_integration_secure", updated);
+    return ok({ saved: true }, "Slack integration saved securely");
+  }
+
+  async getBiotimeIntegration(user: AuthenticatedUser) {
+    this.ensureSuperAdmin(user);
+    const settings = await this.getEncryptedSetting("biotime_integration_secure", {
+      baseUrl: "",
+      employeesEndpoint: "/personnel/api/employees/",
+      attendanceEndpoint: "/iclock/api/transactions/",
+      logsEndpoint: "/iclock/api/transactions/",
+      enabled: false,
+      pollIntervalSeconds: "15",
+      lookbackMinutes: "60",
+    });
+
+    return ok(
+      {
+        baseUrl: String(settings.baseUrl ?? ""),
+        employeesEndpoint: String(settings.employeesEndpoint ?? ""),
+        attendanceEndpoint: String(settings.attendanceEndpoint ?? ""),
+        logsEndpoint: String(settings.logsEndpoint ?? settings.attendanceEndpoint ?? ""),
+        enabled: Boolean(settings.enabled),
+        pollIntervalSeconds: String(settings.pollIntervalSeconds ?? "15"),
+        lookbackMinutes: String(settings.lookbackMinutes ?? "60"),
+        configured: Boolean(settings.baseUrl && (settings.logsEndpoint || settings.attendanceEndpoint)),
+      },
+      "BioTime integration fetched",
+    );
+  }
+
+  async updateBiotimeIntegration(user: AuthenticatedUser, dto: UpdateBiotimeIntegrationDto) {
+    this.ensureSuperAdmin(user);
+    const current = await this.getEncryptedSetting("biotime_integration_secure", {
+      baseUrl: "",
+      employeesEndpoint: "/personnel/api/employees/",
+      attendanceEndpoint: "/iclock/api/transactions/",
+      logsEndpoint: "/iclock/api/transactions/",
+      enabled: false,
+      pollIntervalSeconds: "15",
+      lookbackMinutes: "60",
+    });
+
+    const updated = {
+      ...current,
+      ...Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)),
+    };
+
+    await this.saveEncryptedSetting("biotime_integration_secure", updated);
+    return ok({ saved: true }, "BioTime integration saved securely");
+  }
+
+  async getMySlackEmail(user: AuthenticatedUser) {
+    const row = await this.userRepository.findOne({ where: { id: user.sub } });
+    if (!row) {
+      throw new NotFoundException("User not found");
+    }
+    return ok({ slackEmail: row.slackEmail ?? "" }, "Slack email fetched");
+  }
+
+  async updateMySlackEmail(user: AuthenticatedUser, dto: UpdateSlackEmailDto) {
+    const row = await this.userRepository.findOne({ where: { id: user.sub } });
+    if (!row) {
+      throw new NotFoundException("User not found");
+    }
+    row.slackEmail = dto.slackEmail.trim().toLowerCase();
+    await this.userRepository.save(row);
+    return ok({ slackEmail: row.slackEmail }, "Slack email saved");
   }
 }

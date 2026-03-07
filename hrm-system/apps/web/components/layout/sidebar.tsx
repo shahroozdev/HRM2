@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BarChart3, CalendarCheck2, DollarSign, FileText, LayoutDashboard, Settings, Users, WalletCards } from "lucide-react";
+import { BarChart3, CalendarCheck2, DollarSign, FileText, LayoutDashboard, MessageSquare, Settings, Users, WalletCards } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
@@ -19,6 +19,7 @@ const nav = [
   { href: "/payroll", label: "Payroll", icon: DollarSign, resource: "payroll" as Resource },
   { href: "/documents", label: "Documents", icon: FileText, resource: "documents" as Resource },
   { href: "/reports", label: "Reports", icon: BarChart3, resource: "reports" as Resource },
+  { href: "/messages", label: "Messages", icon: MessageSquare, resource: "messages" as Resource },
   { href: "/settings", label: "Settings", icon: Settings, resource: "settings" as Resource },
 ];
 

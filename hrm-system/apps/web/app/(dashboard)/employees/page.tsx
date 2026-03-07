@@ -2,6 +2,7 @@
 
 import { createEmployeeAction } from "@/actions/mutations";
 import { DataTable } from "@/components/shared/data-table";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { RoleBadge } from "@/components/shared/role-badge";
 import { useEmployees } from "@/hooks/use-employees";
@@ -49,6 +50,7 @@ export default function EmployeesPage(): React.JSX.Element {
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
 
   const departments = useQuery({
     queryKey: ["departments"],
@@ -187,13 +189,16 @@ export default function EmployeesPage(): React.JSX.Element {
   };
 
   const removeEmployee = (row: any) => {
-    const label = `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim() || row.employeeId;
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    setDeleteTarget(row);
+  };
 
+  const confirmDeleteEmployee = () => {
+    if (!deleteTarget) return;
     startTransition(async () => {
-      await api.delete(`/employees/${row.id}`);
+      await api.delete(`/employees/${deleteTarget.id}`);
       toast.success("Employee deleted");
       await employees.refetch();
+      setDeleteTarget(null);
     });
   };
 
@@ -327,6 +332,18 @@ export default function EmployeesPage(): React.JSX.Element {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Employee"
+        description={
+          deleteTarget
+            ? `Delete ${`${deleteTarget.firstName ?? ""} ${deleteTarget.lastName ?? ""}`.trim() || deleteTarget.employeeId}? This cannot be undone.`
+            : ""
+        }
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteEmployee}
+      />
     </div>
   );
 }

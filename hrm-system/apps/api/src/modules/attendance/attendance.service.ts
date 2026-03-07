@@ -84,7 +84,12 @@ export class AttendanceService {
       order: { date: "DESC" },
     });
 
-    return ok(rows, "Attendance records fetched", { total: rows.length });
+    const data = rows.map((row) => ({
+      ...row,
+      employeeCode: row.employee?.biometricCode ?? row.employee?.employeeId ?? null,
+    }));
+
+    return ok(data, "Attendance records fetched", { total: data.length });
   }
 
   async checkIn(user: AuthenticatedUser, dto: CheckInDto) {
@@ -186,4 +191,3 @@ export class AttendanceService {
     return ok(result, "Attendance summary report generated");
   }
 }
-

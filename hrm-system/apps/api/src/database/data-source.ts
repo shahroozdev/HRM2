@@ -12,10 +12,11 @@ import {
   Notification,
   Payroll,
   SalaryStructure,
+  SlackReadReceipt,
   User,
 } from "./entities";
 
-export const AppDataSource = new DataSource({
+const dataSource = new DataSource({
   type: "postgres",
   ...(process.env.DATABASE_URL
     ? { url: process.env.DATABASE_URL }
@@ -26,7 +27,7 @@ export const AppDataSource = new DataSource({
         password: process.env.DB_PASSWORD ?? "123",
         database: process.env.DB_NAME ?? "hrm",
       }),
-  synchronize: true,
+  synchronize: false,
   logging: false,
   entities: [
     User,
@@ -41,8 +42,9 @@ export const AppDataSource = new DataSource({
     Document,
     Notification,
     CompanySetting,
+    SlackReadReceipt,
   ],
   migrations: ["src/database/migrations/*{.ts,.js}"],
 });
 
-export default AppDataSource;
+export default dataSource;

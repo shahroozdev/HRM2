@@ -18,9 +18,9 @@ export function useAuthSession() {
       const res = await fetch("/api/auth/session", { cache: "no-store" });
       if (!res.ok) return null;
       const data = await res.json();
+      if (data?.user || data?.accessToken) return data as SessionPayload;
       return data?.data ?? null;
     },
     staleTime: 30_000,
   });
 }
-

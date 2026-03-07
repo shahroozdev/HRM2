@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { AuthenticatedUser } from "../../common/types/api.types";
 import { UserRole } from "../../common/types/enums";
-import { CreateDepartmentDto, CreateDesignationDto, CreateShiftAssignmentDto, CreateShiftDto, UpdateAccessPolicyDto, UpdateCompanyDto, UpdateDepartmentDto, UpdateDesignationDto, UpdateShiftAssignmentDto, UpdateShiftDto } from "./dto/settings.dto";
+import { CreateDepartmentDto, CreateDesignationDto, CreateShiftAssignmentDto, CreateShiftDto, UpdateAccessPolicyDto, UpdateBiotimeIntegrationDto, UpdateCompanyDto, UpdateDepartmentDto, UpdateDesignationDto, UpdateShiftAssignmentDto, UpdateShiftDto, UpdateSlackEmailDto, UpdateSlackIntegrationDto, UpdateSystemConfigDto } from "./dto/settings.dto";
 import { SettingsService } from "./settings.service";
 
 @ApiTags("Settings")
@@ -156,5 +156,61 @@ export class SettingsController {
   @ApiOperation({ summary: "Update ABAC access policy (Super Admin only)" })
   updateAccessPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateAccessPolicyDto) {
     return this.settingsService.updateAccessPolicy(user, dto);
+  }
+
+  @Get("system-config")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Get encrypted template config (DB/SMTP) with masked values" })
+  getSystemConfig(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getSystemConfig(user);
+  }
+
+  @Put("system-config")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Save encrypted template config (DB/SMTP)" })
+  updateSystemConfig(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSystemConfigDto) {
+    return this.settingsService.updateSystemConfig(user, dto);
+  }
+
+  @Get("integrations/slack")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Get Slack integration settings (masked)" })
+  getSlackIntegration(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getSlackIntegration(user);
+  }
+
+  @Put("integrations/slack")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Save Slack integration settings encrypted" })
+  updateSlackIntegration(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSlackIntegrationDto) {
+    return this.settingsService.updateSlackIntegration(user, dto);
+  }
+
+  @Get("integrations/biotime")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Get BioTime bridge integration settings (secure)" })
+  getBiotimeIntegration(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getBiotimeIntegration(user);
+  }
+
+  @Put("integrations/biotime")
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: "Save BioTime bridge integration settings encrypted" })
+  updateBiotimeIntegration(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateBiotimeIntegrationDto) {
+    return this.settingsService.updateBiotimeIntegration(user, dto);
+  }
+
+  @Get("profile/slack-email")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Get current user's Slack email" })
+  getMySlackEmail(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getMySlackEmail(user);
+  }
+
+  @Put("profile/slack-email")
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER, UserRole.EMPLOYEE)
+  @ApiOperation({ summary: "Save current user's Slack email" })
+  updateMySlackEmail(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSlackEmailDto) {
+    return this.settingsService.updateMySlackEmail(user, dto);
   }
 }

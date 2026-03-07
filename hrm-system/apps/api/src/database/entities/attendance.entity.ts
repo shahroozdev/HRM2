@@ -10,6 +10,9 @@ export class Attendance {
   @Column()
   employeeId!: string;
 
+  @Column({ type: "varchar", nullable: true, unique: true })
+  biotimeTransactionId!: string | null;
+
   @ManyToOne(() => Employee, (employee) => employee.attendances, { onDelete: "CASCADE" })
   @JoinColumn({ name: "employeeId" })
   employee!: Employee;
@@ -31,4 +34,10 @@ export class Attendance {
 
   @Column({ type: "text", nullable: true })
   notes!: string | null;
+
+  @Column({ type: "varchar", default: "manual" })
+  source!: string;
+
+  @Column({ type: "jsonb", nullable: true })
+  rawPayload!: Record<string, unknown> | null;
 }

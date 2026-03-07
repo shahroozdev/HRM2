@@ -34,6 +34,9 @@ export class User {
   @Column({ type: "timestamptz", nullable: true })
   resetTokenExpiresAt!: Date | null;
 
+  @Column({ type: "varchar", nullable: true })
+  slackEmail!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

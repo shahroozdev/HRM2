@@ -1,6 +1,7 @@
 "use client";
 
 import { applyLeaveAction } from "@/actions/mutations";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { useLeaves } from "@/hooks/use-leaves";
@@ -8,6 +9,7 @@ import { useAuthSession } from "@/hooks/use-auth-session";
 import { canView } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +21,12 @@ export default function LeavesPage(): React.JSX.Element {
   const role = session?.user?.role ?? "";
   const rows = leaves.data?.data ?? [];
   const isManagerRole = ["super_admin", "hr_manager", "manager"].includes(role);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ startDate: "", endDate: "", reason: "" });
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<any | null>(null);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [reviewRemarks, setReviewRemarks] = useState("");
 
   const leaveTypes = useQuery({
     queryKey: ["leave-types"],
@@ -26,33 +34,52 @@ export default function LeavesPage(): React.JSX.Element {
   });
 
   const editLeave = async (row: any) => {
-    const startDate = window.prompt("Start date (YYYY-MM-DD)", row.startDate ?? "");
-    if (startDate === null) return;
-    const endDate = window.prompt("End date (YYYY-MM-DD)", row.endDate ?? "");
-    if (endDate === null) return;
-    const reason = window.prompt("Reason", row.reason ?? "");
-    if (reason === null) return;
-
-    await api.put(`/leaves/${row.id}`, {
-      startDate: startDate.trim(),
-      endDate: endDate.trim(),
-      reason: reason.trim(),
+    setEditTarget(row);
+    setEditForm({
+      startDate: row.startDate ?? "",
+      endDate: row.endDate ?? "",
+      reason: row.reason ?? "",
     });
-    toast.success("Leave request updated");
-    await leaves.refetch();
   };
 
   const deleteLeave = async (row: any) => {
-    if (!window.confirm("Delete this leave request?")) return;
-    await api.delete(`/leaves/${row.id}`);
-    toast.success("Leave request deleted");
-    await leaves.refetch();
+    setDeleteTarget(row);
   };
 
   const reviewLeave = async (row: any, action: "approve" | "reject") => {
-    const remarks = window.prompt(`${action === "approve" ? "Approval" : "Rejection"} remarks (optional)`, "") ?? "";
-    await api.put(`/leaves/${row.id}/${action}`, { remarks: remarks.trim() || undefined });
-    toast.success(`Leave ${action}d`);
+    setReviewTarget(row);
+    setReviewAction(action);
+    setReviewRemarks("");
+  };
+
+  const submitEditLeave = async () => {
+    if (!editTarget) return;
+    await api.put(`/leaves/${editTarget.id}`, {
+      startDate: editForm.startDate.trim(),
+      endDate: editForm.endDate.trim(),
+      reason: editForm.reason.trim(),
+    });
+    toast.success("Leave request updated");
+    setEditTarget(null);
+    await leaves.refetch();
+  };
+
+  const confirmDeleteLeave = async () => {
+    if (!deleteTarget) return;
+    await api.delete(`/leaves/${deleteTarget.id}`);
+    toast.success("Leave request deleted");
+    setDeleteTarget(null);
+    await leaves.refetch();
+  };
+
+  const submitReviewLeave = async () => {
+    if (!reviewTarget) return;
+    await api.put(`/leaves/${reviewTarget.id}/${reviewAction}`, {
+      remarks: reviewRemarks.trim() || undefined,
+    });
+    toast.success(`Leave ${reviewAction}d`);
+    setReviewTarget(null);
+    setReviewRemarks("");
     await leaves.refetch();
   };
 
@@ -179,6 +206,102 @@ export default function LeavesPage(): React.JSX.Element {
           loading={leaves.isLoading}
         />
       )}
+
+      <AnimatePresence>
+        {editTarget && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-lg rounded-xl bg-[var(--surface-bg)] p-5"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+            >
+              <h3 className="text-lg font-semibold">Edit Leave Request</h3>
+              <div className="mt-4 grid gap-3">
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                  className="rounded border p-2"
+                />
+                <input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                  className="rounded border p-2"
+                />
+                <textarea
+                  value={editForm.reason}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, reason: e.target.value }))}
+                  className="rounded border p-2"
+                  rows={3}
+                  placeholder="Reason"
+                />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded border px-3 py-2" onClick={() => setEditTarget(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={submitEditLeave}>
+                  Save
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {reviewTarget && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-lg rounded-xl bg-[var(--surface-bg)] p-5"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+            >
+              <h3 className="text-lg font-semibold">{reviewAction === "approve" ? "Approve Leave" : "Reject Leave"}</h3>
+              <textarea
+                value={reviewRemarks}
+                onChange={(e) => setReviewRemarks(e.target.value)}
+                className="mt-4 w-full rounded border p-2"
+                rows={3}
+                placeholder="Remarks (optional)"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded border px-3 py-2" onClick={() => setReviewTarget(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`rounded px-3 py-2 text-white ${reviewAction === "approve" ? "bg-emerald-600" : "bg-amber-600"}`}
+                  onClick={submitReviewLeave}
+                >
+                  {reviewAction === "approve" ? "Approve" : "Reject"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Leave Request"
+        description="Delete this leave request? This action cannot be undone."
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteLeave}
+      />
     </div>
   );
 }

@@ -1,120 +1,81 @@
-"use client";
+﻿"use client";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { useAccessPolicy } from "@/hooks/use-access-policy";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import { api } from "@/lib/api";
 import { AccessPolicy, AppRole, Resource, getDefaultAccessPolicy } from "@/lib/permissions";
-import { useAuthSession } from "@/hooks/use-auth-session";
-import { useAccessPolicy } from "@/hooks/use-access-policy";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-const tabs = ["company", "leave-rules", "office-timings", "shifts", "appearance", "access-control"] as const;
+type CompanyForm = { name: string; email: string; phone: string; address: string };
+type SystemForm = { databaseUri: string; smtpHost: string; smtpPort: string; smtpUser: string; smtpPass: string; smtpFrom: string };
+type SlackForm = { botToken: string; signingSecret: string; appToken: string; defaultChannel: string };
+
+type LeaveRule = { id: string; name: string; maxDays: number; paid: boolean };
+
+const tabs = ["company", "template-config", "slack", "leave-rules", "office-timings", "shifts", "appearance", "access-control", "my-profile"] as const;
 const roles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
-const resources: Resource[] = ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "settings"];
-const manualRoles: AppRole[] = ["super_admin", "hr_manager", "manager", "employee"];
+const resources: Resource[] = ["dashboard", "employees", "attendance", "leaves", "payroll", "documents", "reports", "messages", "settings"];
 
-type LeaveRule = {
-  id: string;
-  name: string;
-  maxDays: number;
-  paid: boolean;
-};
+function AccessControlEditor({ initialPolicy, onSave }: { initialPolicy: AccessPolicy; onSave: (p: AccessPolicy) => Promise<void> }): React.JSX.Element {
+  const [draft, setDraft] = useState<AccessPolicy>(initialPolicy);
 
-function AccessControlEditor({
-  initialPolicy,
-  onSave,
-}: {
-  initialPolicy: AccessPolicy;
-  onSave: (policy: AccessPolicy) => Promise<void>;
-}): React.JSX.Element {
-  const [policyDraft, setPolicyDraft] = useState<AccessPolicy>(initialPolicy);
-
-  const toggleSidebarResource = (targetRole: AppRole, resource: Resource) => {
-    setPolicyDraft((prev) => {
-      const current = prev.sidebar[targetRole] ?? [];
-      const exists = current.includes(resource);
-      const next = exists ? current.filter((item) => item !== resource) : [...current, resource];
-      return {
-        ...prev,
-        sidebar: {
-          ...prev.sidebar,
-          [targetRole]: next,
-        },
-      };
+  const toggleSidebar = (role: AppRole, resource: Resource) => {
+    setDraft((prev) => {
+      const list = prev.sidebar[role] ?? [];
+      const next = list.includes(resource) ? list.filter((x) => x !== resource) : [...list, resource];
+      return { ...prev, sidebar: { ...prev.sidebar, [role]: next } };
     });
   };
 
-  const toggleManualRole = (targetRole: AppRole) => {
-    setPolicyDraft((prev) => {
-      const current = prev.actions.attendanceManualMark ?? [];
-      const exists = current.includes(targetRole);
-      const next = exists ? current.filter((item) => item !== targetRole) : [...current, targetRole];
-      return {
-        ...prev,
-        actions: {
-          ...prev.actions,
-          attendanceManualMark: next,
-        },
-      };
+  const toggleManual = (role: AppRole) => {
+    setDraft((prev) => {
+      const list = prev.actions.attendanceManualMark ?? [];
+      const next = list.includes(role) ? list.filter((x) => x !== role) : [...list, role];
+      return { ...prev, actions: { ...prev.actions, attendanceManualMark: next } };
     });
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border p-4">
-        <h3 className="mb-3 font-semibold">Sidebar Visibility (Role Based)</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="border px-2 py-2 text-left">Resource</th>
+    <div className="space-y-4 rounded-xl border p-4">
+      <h3 className="text-lg font-semibold">Access Control Policy</h3>
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="border px-2 py-2 text-left">Resource</th>
+              {roles.map((r) => <th key={r} className="border px-2 py-2 text-left">{r}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {resources.map((resource) => (
+              <tr key={resource}>
+                <td className="border px-2 py-2 font-medium">{resource}</td>
                 {roles.map((r) => (
-                  <th key={r} className="border px-2 py-2 text-left">{r}</th>
+                  <td key={`${resource}-${r}`} className="border px-2 py-2">
+                    <input type="checkbox" checked={draft.sidebar[r]?.includes(resource) ?? false} onChange={() => toggleSidebar(r, resource)} />
+                  </td>
                 ))}
               </tr>
-            </thead>
-            <tbody>
-              {resources.map((resource) => (
-                <tr key={resource}>
-                  <td className="border px-2 py-2 font-medium">{resource}</td>
-                  {roles.map((r) => {
-                    const checked = policyDraft.sidebar[r]?.includes(resource) ?? false;
-                    return (
-                      <td key={`${resource}-${r}`} className="border px-2 py-2">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleSidebarResource(r, resource)}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      <div className="rounded-xl border p-4">
-        <h3 className="mb-3 font-semibold">Manual Attendance Permission</h3>
-        <div className="flex flex-wrap gap-4">
-          {manualRoles.map((r) => {
-            const checked = policyDraft.actions.attendanceManualMark?.includes(r) ?? false;
-            return (
-              <label key={r} className="flex items-center gap-2 rounded border px-3 py-2">
-                <input type="checkbox" checked={checked} onChange={() => toggleManualRole(r)} />
-                <span>{r}</span>
-              </label>
-            );
-          })}
-        </div>
+      <div className="flex flex-wrap gap-3 text-sm">
+        {roles.map((r) => (
+          <label key={r} className="flex items-center gap-2 rounded border px-3 py-2">
+            <input type="checkbox" checked={draft.actions.attendanceManualMark.includes(r)} onChange={() => toggleManual(r)} />
+            {r} manual attendance
+          </label>
+        ))}
       </div>
 
-      <button className="rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={() => onSave(policyDraft)} type="button">
-        Save Access Control
+      <button type="button" className="rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={() => onSave(draft)}>
+        Save Access Policy
       </button>
     </div>
   );
@@ -124,485 +85,243 @@ export default function SettingsPage(): React.JSX.Element {
   const session = useAuthSession();
   const role = session.data?.user?.role;
   const isSuperAdmin = role === "super_admin";
-  const accessPolicyQuery = useAccessPolicy();
-  const [tab, setTab] = useState<(typeof tabs)[number]>("company");
+  const isHr = role === "hr_manager";
   const { theme, setTheme } = useTheme();
-  const company = useQuery({ queryKey: ["company"], queryFn: async () => (await api.get("/settings/company")).data.data });
-  const departments = useQuery({ queryKey: ["departments"], queryFn: async () => (await api.get("/settings/departments")).data.data ?? [] });
-  const designations = useQuery({ queryKey: ["designations"], queryFn: async () => (await api.get("/settings/designations")).data.data ?? [] });
-  const shifts = useQuery({ queryKey: ["shifts"], queryFn: async () => (await api.get("/settings/shifts")).data.data ?? [] });
-  const shiftAssignments = useQuery({ queryKey: ["shift-assignments"], queryFn: async () => (await api.get("/settings/shift-assignments")).data.data ?? [] });
-  const employees = useQuery({ queryKey: ["employees-for-settings"], queryFn: async () => (await api.get("/employees")).data.data ?? [] });
 
-  const [companyForm, setCompanyForm] = useState({ name: "", email: "", phone: "", address: "" });
+  const accessPolicyQuery = useAccessPolicy();
+
+  const [tab, setTab] = useState<(typeof tabs)[number]>(isSuperAdmin ? "company" : "my-profile");
+
+  const companyQuery = useQuery({ queryKey: ["settings-company"], queryFn: async () => (await api.get("/settings/company")).data.data as CompanyForm, enabled: isSuperAdmin || isHr });
+  const systemQuery = useQuery({ queryKey: ["settings-system"], queryFn: async () => (await api.get("/settings/system-config")).data.data, enabled: isSuperAdmin });
+  const slackQuery = useQuery({ queryKey: ["settings-slack"], queryFn: async () => (await api.get("/settings/integrations/slack")).data.data, enabled: isSuperAdmin });
+  const mySlackQuery = useQuery({ queryKey: ["settings-my-slack"], queryFn: async () => (await api.get("/settings/profile/slack-email")).data.data });
+
+  const departments = useQuery({ queryKey: ["departments"], queryFn: async () => (await api.get("/settings/departments")).data.data ?? [], enabled: isSuperAdmin || isHr });
+  const designations = useQuery({ queryKey: ["designations"], queryFn: async () => (await api.get("/settings/designations")).data.data ?? [], enabled: isSuperAdmin || isHr });
+  const shifts = useQuery({ queryKey: ["shifts"], queryFn: async () => (await api.get("/settings/shifts")).data.data ?? [], enabled: isSuperAdmin || isHr });
+  const assignments = useQuery({ queryKey: ["shift-assignments"], queryFn: async () => (await api.get("/settings/shift-assignments")).data.data ?? [], enabled: isSuperAdmin || isHr });
+  const employees = useQuery({ queryKey: ["employees-for-settings"], queryFn: async () => (await api.get("/employees")).data.data ?? [], enabled: isSuperAdmin || isHr });
+
+  const [companyForm, setCompanyForm] = useState<CompanyForm>({ name: "", email: "", phone: "", address: "" });
+  const [systemForm, setSystemForm] = useState<SystemForm>({ databaseUri: "", smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "", smtpFrom: "" });
+  const [slackForm, setSlackForm] = useState<SlackForm>({ botToken: "", signingSecret: "", appToken: "", defaultChannel: "" });
+  const [mySlackEmail, setMySlackEmail] = useState("");
+
   const [deptForm, setDeptForm] = useState({ name: "", description: "" });
   const [designationForm, setDesignationForm] = useState({ title: "", departmentId: "" });
-  const [ruleForm, setRuleForm] = useState({ name: "", maxDays: 12, paid: true });
-  const [officeForm, setOfficeForm] = useState({ start: "09:00", end: "18:00", weeklyHours: 40 });
   const [shiftForm, setShiftForm] = useState({ name: "", startTime: "09:00", endTime: "18:00", weeklyOffDays: "saturday,sunday" });
-  const [breakForm, setBreakForm] = useState({ label: "Lunch Break", startTime: "13:00", endTime: "14:00", paid: false });
-  const [breaks, setBreaks] = useState<Array<{ label: string; startTime: string; endTime: string; paid: boolean }>>([]);
   const [assignmentForm, setAssignmentForm] = useState({ employeeId: "", shiftId: "", startDate: "", endDate: "", notes: "" });
-  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem("hrm-company-logo");
-  });
 
-  const [rules, setRules] = useState<LeaveRule[]>(() => {
-    if (typeof window === "undefined") return [];
-    const stored = window.localStorage.getItem("hrm-leave-rules");
-    if (!stored) return [];
-    try {
-      return JSON.parse(stored) as LeaveRule[];
-    } catch {
-      return [];
-    }
-  });
+  const [ruleForm, setRuleForm] = useState({ name: "", maxDays: 12, paid: true });
+  const [rules, setRules] = useState<LeaveRule[]>([]);
+  const [officeForm, setOfficeForm] = useState({ start: "09:00", end: "18:00", weeklyHours: 40 });
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("hrm-leave-rules", JSON.stringify(rules));
+    const savedRules = window.localStorage.getItem("hrm-leave-rules");
+    if (savedRules) {
+      try { setRules(JSON.parse(savedRules)); } catch {}
     }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("hrm-leave-rules", JSON.stringify(rules));
   }, [rules]);
 
-  const visibleTabs = useMemo(() => tabs.filter((t) => t !== "access-control" || isSuperAdmin), [isSuperAdmin]);
-  const activeTab = visibleTabs.includes(tab) ? tab : (visibleTabs[0] ?? "company");
-
-  const saveCompany = async () => {
-    const payload = {
-      name: companyForm.name || company.data?.name || "",
-      email: companyForm.email || company.data?.email || "",
-      phone: companyForm.phone || company.data?.phone || "",
-      address: companyForm.address || company.data?.address || "",
-    };
-    await api.put("/settings/company", payload);
-    toast.success("Company settings updated");
-  };
-
-  const createDepartment = async () => {
-    if (!deptForm.name.trim()) {
-      toast.error("Department name is required");
-      return;
+  useEffect(() => { if (companyQuery.data) setCompanyForm(companyQuery.data); }, [companyQuery.data]);
+  useEffect(() => { if (mySlackQuery.data) setMySlackEmail(mySlackQuery.data.slackEmail ?? ""); }, [mySlackQuery.data]);
+  useEffect(() => {
+    if (systemQuery.data) {
+      setSystemForm((prev) => ({ ...prev, smtpHost: systemQuery.data.smtpHost ?? "", smtpPort: systemQuery.data.smtpPort ?? "", smtpUser: systemQuery.data.smtpUser ?? "", smtpFrom: systemQuery.data.smtpFrom ?? "" }));
     }
-    await api.post("/settings/departments", {
-      name: deptForm.name.trim(),
-      description: deptForm.description.trim() || null,
-    });
-    setDeptForm({ name: "", description: "" });
-    await departments.refetch();
-    toast.success("Department created");
-  };
-
-  const editDepartment = async (department: any) => {
-    const name = window.prompt("Department name", department.name ?? "");
-    if (name === null) return;
-    const description = window.prompt("Description", department.description ?? "");
-    if (description === null) return;
-
-    await api.put(`/settings/departments/${department.id}`, {
-      name: name.trim() || department.name,
-      description: description.trim() || null,
-    });
-    await departments.refetch();
-    toast.success("Department updated");
-  };
-
-  const deleteDepartment = async (department: any) => {
-    if (!window.confirm(`Delete department "${department.name}"?`)) return;
-    await api.delete(`/settings/departments/${department.id}`);
-    await departments.refetch();
-    await designations.refetch();
-    toast.success("Department deleted");
-  };
-
-  const createDesignation = async () => {
-    if (!designationForm.title.trim() || !designationForm.departmentId) {
-      toast.error("Designation title and department are required");
-      return;
+  }, [systemQuery.data]);
+  useEffect(() => {
+    if (slackQuery.data) {
+      setSlackForm((prev) => ({ ...prev, defaultChannel: slackQuery.data.defaultChannel ?? "" }));
     }
-    await api.post("/settings/designations", {
-      title: designationForm.title.trim(),
-      departmentId: designationForm.departmentId,
-    });
-    setDesignationForm({ title: "", departmentId: "" });
-    await designations.refetch();
-    toast.success("Designation created");
-  };
+  }, [slackQuery.data]);
 
-  const editDesignation = async (designation: any) => {
-    const title = window.prompt("Designation title", designation.title ?? "");
-    if (title === null) return;
-    await api.put(`/settings/designations/${designation.id}`, {
-      title: title.trim() || designation.title,
-      departmentId: designation.departmentId,
-    });
-    await designations.refetch();
-    toast.success("Designation updated");
-  };
+  const visibleTabs: Array<(typeof tabs)[number]> = useMemo(() => {
+    if (isSuperAdmin) return [...tabs];
+    if (isHr) return ["company", "leave-rules", "office-timings", "shifts", "appearance", "my-profile"];
+    return ["appearance", "my-profile"];
+  }, [isSuperAdmin, isHr]);
 
-  const deleteDesignation = async (designation: any) => {
-    if (!window.confirm(`Delete designation "${designation.title}"?`)) return;
-    await api.delete(`/settings/designations/${designation.id}`);
-    await designations.refetch();
-    toast.success("Designation deleted");
-  };
-
-  const addBreak = () => {
-    if (!breakForm.label.trim() || !breakForm.startTime || !breakForm.endTime) {
-      toast.error("Break label and time range are required");
-      return;
-    }
-    setBreaks((prev) => [...prev, { ...breakForm, label: breakForm.label.trim() }]);
-    setBreakForm({ label: "Lunch Break", startTime: "13:00", endTime: "14:00", paid: false });
-  };
-
-  const createShift = async () => {
-    if (!shiftForm.name.trim()) {
-      toast.error("Shift name is required");
-      return;
-    }
-    await api.post("/settings/shifts", {
-      name: shiftForm.name.trim(),
-      startTime: shiftForm.startTime,
-      endTime: shiftForm.endTime,
-      weeklyOffDays: shiftForm.weeklyOffDays.split(",").map((item) => item.trim()).filter(Boolean),
-      breaks,
-    });
-    setShiftForm({ name: "", startTime: "09:00", endTime: "18:00", weeklyOffDays: "saturday,sunday" });
-    setBreaks([]);
-    await shifts.refetch();
-    toast.success("Shift template created");
-  };
-
-  const assignShift = async () => {
-    if (!assignmentForm.employeeId || !assignmentForm.shiftId || !assignmentForm.startDate || !assignmentForm.endDate) {
-      toast.error("Employee, shift and date range are required");
-      return;
-    }
-    await api.post("/settings/shift-assignments", assignmentForm);
-    setAssignmentForm({ employeeId: "", shiftId: "", startDate: "", endDate: "", notes: "" });
-    await shiftAssignments.refetch();
-    toast.success("Shift assigned");
-  };
-
-  const addRule = () => {
-    if (!ruleForm.name.trim()) {
-      toast.error("Rule name is required");
-      return;
-    }
-    setRules((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        name: ruleForm.name.trim(),
-        maxDays: Number(ruleForm.maxDays),
-        paid: ruleForm.paid,
-      },
-    ]);
-    setRuleForm({ name: "", maxDays: 12, paid: true });
-    toast.success("Rule added");
-  };
-
-  const onLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      setLogoUrl(result);
-      window.localStorage.setItem("hrm-company-logo", result);
-      window.dispatchEvent(new Event("hrm-logo-changed"));
-      toast.success("Company logo updated");
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const saveAccessPolicy = async (policy: AccessPolicy) => {
-    if (!isSuperAdmin) {
-      toast.error("Only super admin can update access control");
-      return;
-    }
-    await api.put("/settings/access-policy", { policy });
-    await accessPolicyQuery.refetch();
-    toast.success("Access policy updated");
-  };
+  const activeTab = visibleTabs.includes(tab) ? tab : visibleTabs[0];
 
   return (
     <div>
-      <PageHeader title="Settings" description="Configure HRM system defaults" />
+      <PageHeader title="Settings" description="Old and new configuration panels combined" />
+
       <div className="mb-4 flex flex-wrap gap-2">
-        {visibleTabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`rounded px-3 py-2 text-sm ${activeTab === t ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-bg)]"}`}
-            type="button"
-          >
-            {t}
+        {visibleTabs.map((item) => (
+          <button key={item} type="button" onClick={() => setTab(item)} className={`rounded-md px-3 py-2 text-sm ${activeTab === item ? "bg-[var(--accent)] text-white" : "bg-slate-200 dark:bg-slate-800"}`}>
+            {item}
           </button>
         ))}
       </div>
 
-      {activeTab === "company" && (
+      {activeTab === "company" && (isSuperAdmin || isHr) && (
         <div className="space-y-4">
           <div className="rounded-xl border p-4">
+            <h3 className="mb-3 text-lg font-semibold">Firm Profile</h3>
             <div className="grid gap-3 md:grid-cols-2">
-              <input value={companyForm.name || company.data?.name || ""} onChange={(e) => setCompanyForm((s) => ({ ...s, name: e.target.value }))} placeholder="Company Name" className="rounded border p-2" />
-              <input value={companyForm.email || company.data?.email || ""} onChange={(e) => setCompanyForm((s) => ({ ...s, email: e.target.value }))} placeholder="Company Email" className="rounded border p-2" />
-              <input value={companyForm.phone || company.data?.phone || ""} onChange={(e) => setCompanyForm((s) => ({ ...s, phone: e.target.value }))} placeholder="Phone" className="rounded border p-2" />
-              <input value={companyForm.address || company.data?.address || ""} onChange={(e) => setCompanyForm((s) => ({ ...s, address: e.target.value }))} placeholder="Address" className="rounded border p-2" />
+              <input value={companyForm.name} onChange={(e) => setCompanyForm((p) => ({ ...p, name: e.target.value }))} placeholder="Firm Name" className="rounded border p-2" />
+              <input value={companyForm.email} onChange={(e) => setCompanyForm((p) => ({ ...p, email: e.target.value }))} placeholder="Firm Email" className="rounded border p-2" />
+              <input value={companyForm.phone} onChange={(e) => setCompanyForm((p) => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="rounded border p-2" />
+              <input value={companyForm.address} onChange={(e) => setCompanyForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" className="rounded border p-2" />
             </div>
-            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={saveCompany} type="button">
-              Save Company Profile
+            <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.put("/settings/company", companyForm); toast.success("Firm profile saved"); }}>
+              Save Firm Profile
             </button>
           </div>
 
           <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Department Rules</h3>
+            <h3 className="mb-3 text-lg font-semibold">Departments</h3>
             <div className="grid gap-3 md:grid-cols-3">
               <input value={deptForm.name} onChange={(e) => setDeptForm((s) => ({ ...s, name: e.target.value }))} placeholder="Department Name" className="rounded border p-2" />
               <input value={deptForm.description} onChange={(e) => setDeptForm((s) => ({ ...s, description: e.target.value }))} placeholder="Description" className="rounded border p-2 md:col-span-2" />
             </div>
-            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={createDepartment} type="button">
+            <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.post("/settings/departments", { name: deptForm.name, description: deptForm.description || null }); setDeptForm({ name: "", description: "" }); await departments.refetch(); toast.success("Department created"); }}>
               Create Department
             </button>
-            <ul className="mt-4 space-y-2 text-sm">
-              {(departments.data ?? []).map((d: any) => (
-                <li key={d.id} className="rounded border px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{d.name}</div>
-                      <div className="text-[var(--muted-text)]">{d.description || "No description"}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editDepartment(d)}>
-                        Edit
-                      </button>
-                      <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => deleteDepartment(d)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <ul className="mt-3 space-y-2 text-sm">{(departments.data ?? []).map((d: any) => <li key={d.id} className="rounded border px-3 py-2">{d.name} | {d.description || "-"}</li>)}</ul>
           </div>
 
           <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Designation Setup</h3>
+            <h3 className="mb-3 text-lg font-semibold">Designations</h3>
             <div className="grid gap-3 md:grid-cols-3">
               <input value={designationForm.title} onChange={(e) => setDesignationForm((s) => ({ ...s, title: e.target.value }))} placeholder="Designation Title" className="rounded border p-2" />
               <select value={designationForm.departmentId} onChange={(e) => setDesignationForm((s) => ({ ...s, departmentId: e.target.value }))} className="rounded border p-2 md:col-span-2">
                 <option value="">Select Department</option>
-                {(departments.data ?? []).map((d: any) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
+                {(departments.data ?? []).map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
-            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={createDesignation} type="button">
+            <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.post("/settings/designations", designationForm); setDesignationForm({ title: "", departmentId: "" }); await designations.refetch(); toast.success("Designation created"); }}>
               Create Designation
             </button>
-            <ul className="mt-4 space-y-2 text-sm">
-              {(designations.data ?? []).map((item: any) => (
-                <li key={item.id} className="rounded border px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{item.title}</div>
-                      <div className="text-[var(--muted-text)]">{item.department?.name ?? "No department"}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editDesignation(item)}>
-                        Edit
-                      </button>
-                      <button type="button" className="rounded bg-rose-600 px-2 py-1 text-xs text-white" onClick={() => deleteDesignation(item)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <ul className="mt-3 space-y-2 text-sm">{(designations.data ?? []).map((d: any) => <li key={d.id} className="rounded border px-3 py-2">{d.title} | {d.department?.name ?? "-"}</li>)}</ul>
           </div>
+        </div>
+      )}
+
+      {activeTab === "template-config" && isSuperAdmin && (
+        <div className="rounded-xl border p-4">
+          <h3 className="mb-1 text-lg font-semibold">Template Config (Secure)</h3>
+          <p className="mb-3 text-sm text-slate-500">Encrypted at rest, masked on read.</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input value={systemForm.databaseUri} onChange={(e) => setSystemForm((p) => ({ ...p, databaseUri: e.target.value }))} placeholder="Database URI" className="rounded border p-2 md:col-span-2" />
+            <input value={systemForm.smtpHost} onChange={(e) => setSystemForm((p) => ({ ...p, smtpHost: e.target.value }))} placeholder="SMTP Host" className="rounded border p-2" />
+            <input value={systemForm.smtpPort} onChange={(e) => setSystemForm((p) => ({ ...p, smtpPort: e.target.value }))} placeholder="SMTP Port" className="rounded border p-2" />
+            <input value={systemForm.smtpUser} onChange={(e) => setSystemForm((p) => ({ ...p, smtpUser: e.target.value }))} placeholder="SMTP User" className="rounded border p-2" />
+            <input value={systemForm.smtpPass} onChange={(e) => setSystemForm((p) => ({ ...p, smtpPass: e.target.value }))} placeholder="SMTP Password" type="password" className="rounded border p-2" />
+            <input value={systemForm.smtpFrom} onChange={(e) => setSystemForm((p) => ({ ...p, smtpFrom: e.target.value }))} placeholder="SMTP From" className="rounded border p-2 md:col-span-2" />
+          </div>
+          <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.put("/settings/system-config", systemForm); await systemQuery.refetch(); setSystemForm((p) => ({ ...p, databaseUri: "", smtpPass: "" })); toast.success("Template config saved"); }}>
+            Save Template Config
+          </button>
+        </div>
+      )}
+
+      {activeTab === "slack" && isSuperAdmin && (
+        <div className="rounded-xl border p-4">
+          <h3 className="mb-1 text-lg font-semibold">Slack Integration (Secure)</h3>
+          <p className="mb-3 text-sm text-slate-500">Keys are encrypted and never returned raw.</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input value={slackForm.botToken} onChange={(e) => setSlackForm((p) => ({ ...p, botToken: e.target.value }))} placeholder="Bot Token" type="password" className="rounded border p-2 md:col-span-2" />
+            <input value={slackForm.signingSecret} onChange={(e) => setSlackForm((p) => ({ ...p, signingSecret: e.target.value }))} placeholder="Signing Secret" type="password" className="rounded border p-2" />
+            <input value={slackForm.appToken} onChange={(e) => setSlackForm((p) => ({ ...p, appToken: e.target.value }))} placeholder="App Token" type="password" className="rounded border p-2" />
+            <input value={slackForm.defaultChannel} onChange={(e) => setSlackForm((p) => ({ ...p, defaultChannel: e.target.value }))} placeholder="Default Channel" className="rounded border p-2 md:col-span-2" />
+          </div>
+          <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.put("/settings/integrations/slack", slackForm); await slackQuery.refetch(); setSlackForm((p) => ({ ...p, botToken: "", signingSecret: "", appToken: "" })); toast.success("Slack integration saved"); }}>
+            Save Slack Keys
+          </button>
         </div>
       )}
 
       {activeTab === "leave-rules" && (
         <div className="rounded-xl border p-4">
-          <h3 className="mb-3 font-semibold">Leave Rule Builder</h3>
+          <h3 className="mb-3 text-lg font-semibold">Leave Rules</h3>
           <div className="grid gap-3 md:grid-cols-4">
             <input value={ruleForm.name} onChange={(e) => setRuleForm((s) => ({ ...s, name: e.target.value }))} placeholder="Rule Name" className="rounded border p-2" />
-            <input value={ruleForm.maxDays} onChange={(e) => setRuleForm((s) => ({ ...s, maxDays: Number(e.target.value || 0) }))} type="number" min={1} className="rounded border p-2" />
-            <select value={ruleForm.paid ? "paid" : "unpaid"} onChange={(e) => setRuleForm((s) => ({ ...s, paid: e.target.value === "paid" }))} className="rounded border p-2">
-              <option value="paid">Paid</option>
-              <option value="unpaid">Unpaid</option>
-            </select>
-            <button onClick={addRule} className="rounded bg-[var(--accent)] px-3 py-2 text-white" type="button">
-              Create Rule
+            <input type="number" min={1} value={ruleForm.maxDays} onChange={(e) => setRuleForm((s) => ({ ...s, maxDays: Number(e.target.value || 1) }))} className="rounded border p-2" />
+            <select value={ruleForm.paid ? "paid" : "unpaid"} onChange={(e) => setRuleForm((s) => ({ ...s, paid: e.target.value === "paid" }))} className="rounded border p-2"><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select>
+            <button type="button" className="rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={() => { if (!ruleForm.name.trim()) return; setRules((prev) => [...prev, { id: crypto.randomUUID(), name: ruleForm.name.trim(), maxDays: ruleForm.maxDays, paid: ruleForm.paid }]); setRuleForm({ name: "", maxDays: 12, paid: true }); toast.success("Rule added"); }}>
+              Add Rule
             </button>
           </div>
-          <ul className="mt-4 space-y-2 text-sm">
-            {rules.map((rule) => (
-              <li key={rule.id} className="flex items-center justify-between rounded border px-3 py-2">
-                <span>{rule.name} | {rule.maxDays} days | {rule.paid ? "Paid" : "Unpaid"}</span>
-                <button type="button" className="rounded bg-rose-600 px-2 py-1 text-white" onClick={() => setRules((prev) => prev.filter((r) => r.id !== rule.id))}>
-                  Delete
-                </button>
-              </li>
-            ))}
-            {!rules.length && <li className="text-[var(--muted-text)]">No rules yet. Create one above.</li>}
-          </ul>
+          <ul className="mt-3 space-y-2 text-sm">{rules.map((r) => <li key={r.id} className="rounded border px-3 py-2">{r.name} | {r.maxDays} days | {r.paid ? "Paid" : "Unpaid"}</li>)}</ul>
         </div>
       )}
 
       {activeTab === "office-timings" && (
         <div className="rounded-xl border p-4">
-          <h3 className="mb-3 font-semibold">Office Timings</h3>
+          <h3 className="mb-3 text-lg font-semibold">Office Timings</h3>
           <div className="grid gap-3 md:grid-cols-3">
             <input type="time" value={officeForm.start} onChange={(e) => setOfficeForm((s) => ({ ...s, start: e.target.value }))} className="rounded border p-2" />
             <input type="time" value={officeForm.end} onChange={(e) => setOfficeForm((s) => ({ ...s, end: e.target.value }))} className="rounded border p-2" />
-            <input type="number" min={1} value={officeForm.weeklyHours} onChange={(e) => setOfficeForm((s) => ({ ...s, weeklyHours: Number(e.target.value || 0) }))} className="rounded border p-2" />
+            <input type="number" min={1} value={officeForm.weeklyHours} onChange={(e) => setOfficeForm((s) => ({ ...s, weeklyHours: Number(e.target.value || 1) }))} className="rounded border p-2" />
           </div>
-          <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={() => toast.success("Office timings saved")}>
-            Save Office Timings
-          </button>
+          <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={() => toast.success("Office timings saved")}>Save Office Timings</button>
         </div>
       )}
 
-      {activeTab === "shifts" && (
+      {activeTab === "shifts" && (isSuperAdmin || isHr) && (
         <div className="space-y-4">
           <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Create Shift Template</h3>
+            <h3 className="mb-3 text-lg font-semibold">Shift Templates</h3>
             <div className="grid gap-3 md:grid-cols-4">
               <input value={shiftForm.name} onChange={(e) => setShiftForm((s) => ({ ...s, name: e.target.value }))} placeholder="Shift Name" className="rounded border p-2" />
               <input type="time" value={shiftForm.startTime} onChange={(e) => setShiftForm((s) => ({ ...s, startTime: e.target.value }))} className="rounded border p-2" />
               <input type="time" value={shiftForm.endTime} onChange={(e) => setShiftForm((s) => ({ ...s, endTime: e.target.value }))} className="rounded border p-2" />
-              <input value={shiftForm.weeklyOffDays} onChange={(e) => setShiftForm((s) => ({ ...s, weeklyOffDays: e.target.value }))} placeholder="Weekly off (comma-separated)" className="rounded border p-2" />
+              <input value={shiftForm.weeklyOffDays} onChange={(e) => setShiftForm((s) => ({ ...s, weeklyOffDays: e.target.value }))} placeholder="Weekly off days comma-separated" className="rounded border p-2" />
             </div>
-            <div className="mt-4 rounded border p-3">
-              <h4 className="mb-2 font-medium">Break Rules (Lunch, Prayer, etc.)</h4>
-              <div className="grid gap-2 md:grid-cols-5">
-                <select value={breakForm.label} onChange={(e) => setBreakForm((s) => ({ ...s, label: e.target.value }))} className="rounded border p-2">
-                  <option>Lunch Break</option>
-                  <option>Prayer Break</option>
-                  <option>Tea Break</option>
-                  <option>Custom Break</option>
-                </select>
-                <input type="time" value={breakForm.startTime} onChange={(e) => setBreakForm((s) => ({ ...s, startTime: e.target.value }))} className="rounded border p-2" />
-                <input type="time" value={breakForm.endTime} onChange={(e) => setBreakForm((s) => ({ ...s, endTime: e.target.value }))} className="rounded border p-2" />
-                <select value={breakForm.paid ? "paid" : "unpaid"} onChange={(e) => setBreakForm((s) => ({ ...s, paid: e.target.value === "paid" }))} className="rounded border p-2">
-                  <option value="paid">Paid</option>
-                  <option value="unpaid">Unpaid</option>
-                </select>
-                <button className="rounded border px-3 py-2" type="button" onClick={addBreak}>Add Break</button>
-              </div>
-              <ul className="mt-3 space-y-2 text-sm">
-                {breaks.map((item, index) => (
-                  <li key={`${item.label}-${index}`} className="flex items-center justify-between rounded border px-3 py-2">
-                    <span>{item.label} | {item.startTime}-{item.endTime} | {item.paid ? "Paid" : "Unpaid"}</span>
-                    <button type="button" className="rounded bg-rose-600 px-2 py-1 text-white" onClick={() => setBreaks((prev) => prev.filter((_, i) => i !== index))}>Delete</button>
-                  </li>
-                ))}
-                {!breaks.length && <li className="text-[var(--muted-text)]">No breaks added yet.</li>}
-              </ul>
-            </div>
-            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={createShift}>
-              Save Shift Template
+            <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.post("/settings/shifts", { ...shiftForm, weeklyOffDays: shiftForm.weeklyOffDays.split(",").map((x) => x.trim()).filter(Boolean), breaks: [] }); setShiftForm({ name: "", startTime: "09:00", endTime: "18:00", weeklyOffDays: "saturday,sunday" }); await shifts.refetch(); toast.success("Shift created"); }}>
+              Create Shift
             </button>
+            <ul className="mt-3 space-y-2 text-sm">{(shifts.data ?? []).map((s: any) => <li key={s.id} className="rounded border px-3 py-2">{s.name} | {s.startTime} - {s.endTime}</li>)}</ul>
           </div>
 
           <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Assign Shift to Employee (Days/Months)</h3>
+            <h3 className="mb-3 text-lg font-semibold">Assign Shift</h3>
             <div className="grid gap-3 md:grid-cols-5">
-              <select value={assignmentForm.employeeId} onChange={(e) => setAssignmentForm((s) => ({ ...s, employeeId: e.target.value }))} className="rounded border p-2">
-                <option value="">Select Employee</option>
-                {(employees.data ?? []).map((emp: any) => (
-                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeId})</option>
-                ))}
-              </select>
-              <select value={assignmentForm.shiftId} onChange={(e) => setAssignmentForm((s) => ({ ...s, shiftId: e.target.value }))} className="rounded border p-2">
-                <option value="">Select Shift</option>
-                {(shifts.data ?? []).map((shift: any) => (
-                  <option key={shift.id} value={shift.id}>{shift.name} ({shift.startTime}-{shift.endTime})</option>
-                ))}
-              </select>
+              <select value={assignmentForm.employeeId} onChange={(e) => setAssignmentForm((s) => ({ ...s, employeeId: e.target.value }))} className="rounded border p-2"><option value="">Employee</option>{(employees.data ?? []).map((e: any) => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}</select>
+              <select value={assignmentForm.shiftId} onChange={(e) => setAssignmentForm((s) => ({ ...s, shiftId: e.target.value }))} className="rounded border p-2"><option value="">Shift</option>{(shifts.data ?? []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
               <input type="date" value={assignmentForm.startDate} onChange={(e) => setAssignmentForm((s) => ({ ...s, startDate: e.target.value }))} className="rounded border p-2" />
               <input type="date" value={assignmentForm.endDate} onChange={(e) => setAssignmentForm((s) => ({ ...s, endDate: e.target.value }))} className="rounded border p-2" />
-              <input value={assignmentForm.notes} onChange={(e) => setAssignmentForm((s) => ({ ...s, notes: e.target.value }))} placeholder="Notes (optional)" className="rounded border p-2" />
+              <input value={assignmentForm.notes} onChange={(e) => setAssignmentForm((s) => ({ ...s, notes: e.target.value }))} placeholder="Notes" className="rounded border p-2" />
             </div>
-            <button className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" type="button" onClick={assignShift}>
+            <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.post("/settings/shift-assignments", assignmentForm); setAssignmentForm({ employeeId: "", shiftId: "", startDate: "", endDate: "", notes: "" }); await assignments.refetch(); toast.success("Shift assigned"); }}>
               Assign Shift
             </button>
-          </div>
-
-          <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Shift Templates</h3>
-            <ul className="space-y-2 text-sm">
-              {(shifts.data ?? []).map((item: any) => (
-                <li key={item.id} className="rounded border px-3 py-2">
-                  <div className="font-medium">{item.name} ({item.startTime}-{item.endTime})</div>
-                  <div className="text-[var(--muted-text)]">Weekly Off: {(item.weeklyOffDays ?? []).join(", ") || "-"}</div>
-                  <div className="text-[var(--muted-text)]">Breaks: {(item.breaks ?? []).map((b: any) => `${b.label} ${b.startTime}-${b.endTime}`).join(" | ") || "-"}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Assigned Shifts</h3>
-            <ul className="space-y-2 text-sm">
-              {(shiftAssignments.data ?? []).map((item: any) => (
-                <li key={item.id} className="rounded border px-3 py-2">
-                  <div className="font-medium">{item.employeeName} ({item.employeeCode})</div>
-                  <div className="text-[var(--muted-text)]">{item.shiftName} | {item.startDate} to {item.endDate}</div>
-                  <div className="text-[var(--muted-text)]">{item.notes || "No notes"}</div>
-                </li>
-              ))}
-            </ul>
+            <ul className="mt-3 space-y-2 text-sm">{(assignments.data ?? []).map((a: any) => <li key={a.id} className="rounded border px-3 py-2">{a.employeeName} | {a.shiftName} | {a.startDate} to {a.endDate}</li>)}</ul>
           </div>
         </div>
       )}
 
       {activeTab === "appearance" && (
-        <div className="space-y-4">
-          <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Theme</h3>
-            <select value={theme ?? "light"} onChange={(e) => setTheme(e.target.value)} className="w-full max-w-xs rounded border p-2">
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="ocean">Ocean</option>
-              <option value="forest">Forest</option>
-              <option value="sunset">Sunset</option>
-            </select>
-            <p className="mt-2 text-sm text-[var(--muted-text)]">Theme preference is remembered per user browser.</p>
-          </div>
-
-          <div className="rounded-xl border p-4">
-            <h3 className="mb-3 font-semibold">Company Logo</h3>
-            <div className="mb-3 h-16 w-16 overflow-hidden rounded-lg border">
-              {logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt="Company logo preview" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-[var(--muted-text)]">No logo</div>
-              )}
-            </div>
-            <input type="file" accept="image/*" onChange={onLogoChange} className="block w-full max-w-xs rounded border p-2 text-sm" />
-          </div>
+        <div className="rounded-xl border p-4">
+          <h3 className="mb-3 text-lg font-semibold">Appearance</h3>
+          <select value={theme ?? "light"} onChange={(e) => setTheme(e.target.value)} className="rounded border p-2">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </select>
         </div>
       )}
 
       {activeTab === "access-control" && isSuperAdmin && (
-        <div>
-          <AccessControlEditor
-            key={JSON.stringify(accessPolicyQuery.data ?? getDefaultAccessPolicy())}
-            initialPolicy={accessPolicyQuery.data ?? getDefaultAccessPolicy()}
-            onSave={saveAccessPolicy}
-          />
+        <AccessControlEditor initialPolicy={accessPolicyQuery.data ?? getDefaultAccessPolicy()} onSave={async (policy) => { await api.put("/settings/access-policy", { policy }); await accessPolicyQuery.refetch(); toast.success("Access policy saved"); }} />
+      )}
+
+      {activeTab === "my-profile" && (
+        <div className="rounded-xl border p-4">
+          <h3 className="mb-1 text-lg font-semibold">My Slack Mapping</h3>
+          <p className="mb-3 text-sm text-slate-500">Set your Slack email used in your workspace.</p>
+          <input value={mySlackEmail} onChange={(e) => setMySlackEmail(e.target.value)} placeholder="you@firm.com" className="w-full max-w-md rounded border p-2" />
+          <button type="button" className="mt-3 rounded bg-[var(--accent)] px-3 py-2 text-white" onClick={async () => { await api.put("/settings/profile/slack-email", { slackEmail: mySlackEmail }); await mySlackQuery.refetch(); toast.success("Slack email saved"); }}>
+            Save My Slack Email
+          </button>
         </div>
       )}
     </div>

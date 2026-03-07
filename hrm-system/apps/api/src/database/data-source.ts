@@ -16,10 +16,14 @@ import {
   User,
 } from "./entities";
 
+const databaseUrl = process.env.DATABASE_URL;
+const isSupabasePooler = Boolean(databaseUrl?.includes("pooler.supabase.com"));
+const defaultPoolMax = isSupabasePooler ? "1" : "5";
+
 const dataSource = new DataSource({
   type: "postgres",
-  ...(process.env.DATABASE_URL
-    ? { url: process.env.DATABASE_URL }
+  ...(databaseUrl
+    ? { url: databaseUrl }
     : {
         host: process.env.DB_HOST ?? "localhost",
         port: Number(process.env.DB_PORT ?? "5432"),
@@ -30,7 +34,7 @@ const dataSource = new DataSource({
   synchronize: false,
   logging: false,
   extra: {
-    max: Number(process.env.DB_POOL_MAX ?? "5"),
+    max: Number(process.env.DB_POOL_MAX ?? defaultPoolMax),
     idleTimeoutMillis: Number(process.env.DB_POOL_IDLE_MS ?? "30000"),
     connectionTimeoutMillis: Number(process.env.DB_POOL_CONN_TIMEOUT_MS ?? "10000"),
   },

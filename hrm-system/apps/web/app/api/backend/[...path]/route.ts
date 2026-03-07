@@ -27,18 +27,41 @@ async function proxy(req: NextRequest, path: string[]) {
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : undefined;
 
-  const upstream = await fetch(target, {
-    method: req.method,
-    headers,
-    body: hasBody ? body : undefined,
-    redirect: "manual",
-    cache: "no-store",
-  });
+  try {
+    const upstream = await fetch(target, {
+      method: req.method,
+      headers,
+      body: hasBody ? body : undefined,
+      redirect: "manual",
+      cache: "no-store",
+    });
 
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    headers: upstream.headers,
-  });
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+    responseHeaders.delete("transfer-encoding");
+    responseHeaders.delete("connection");
+
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "UPSTREAM_UNREACHABLE",
+          message: "Unable to reach API server from web proxy",
+          details: {
+            endpoint: target.toString(),
+            reason: error?.message ?? "Unknown error",
+          },
+        },
+      },
+      { status: 503 },
+    );
+  }
 }
 
 type RouteContext = {
@@ -69,4 +92,3 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   const { path } = await context.params;
   return proxy(req, path);
 }
-

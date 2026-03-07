@@ -38,7 +38,9 @@ import { BiotimeModule } from "./modules/biotime/biotime.module";
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const databaseUrl = config.get<string>("DATABASE_URL");
-        const poolMax = Number(config.get<string>("DB_POOL_MAX", "5"));
+        const isSupabasePooler = Boolean(databaseUrl?.includes("pooler.supabase.com"));
+        const defaultPoolMax = isSupabasePooler ? "1" : "5";
+        const poolMax = Number(config.get<string>("DB_POOL_MAX", defaultPoolMax));
         const poolIdleMs = Number(config.get<string>("DB_POOL_IDLE_MS", "30000"));
         const poolConnTimeoutMs = Number(
           config.get<string>("DB_POOL_CONN_TIMEOUT_MS", "10000"),

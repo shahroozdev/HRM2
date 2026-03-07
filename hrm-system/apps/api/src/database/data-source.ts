@@ -29,6 +29,11 @@ const dataSource = new DataSource({
       }),
   synchronize: false,
   logging: false,
+  extra: {
+    max: Number(process.env.DB_POOL_MAX ?? "5"),
+    idleTimeoutMillis: Number(process.env.DB_POOL_IDLE_MS ?? "30000"),
+    connectionTimeoutMillis: Number(process.env.DB_POOL_CONN_TIMEOUT_MS ?? "10000"),
+  },
   entities: [
     User,
     Employee,

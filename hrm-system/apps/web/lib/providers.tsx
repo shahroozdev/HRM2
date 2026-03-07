@@ -6,7 +6,19 @@ import { useState } from "react";
 import { Toaster } from "sonner";
 
 export function AppProviders({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: false,
+            retry: 1,
+            retryDelay: 1200,
+          },
+        },
+      }),
+  );
 
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={["light", "dark", "ocean", "forest", "sunset"]}>
